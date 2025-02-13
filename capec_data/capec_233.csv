@@ -1,0 +1,2 @@
+ID,Name,Abstraction,Status,Description,Alternate Terms,Likelihood Of Attack,Typical Severity,Related Attack Patterns,Execution Flow,Prerequisites,Skills Required,Resources Required,Indicators,Consequences,Mitigations,Example Instances,Related Weaknesses,Taxonomy Mappings,Notes
+233,Privilege Escalation,Meta,Draft,An adversary exploits a weakness enabling them to elevate their privilege and perform an action that they are not supposed to be authorized to perform.,,,,,,,,,,,,,::269::1264::1311::,TAXONOMY NAME:ATTACK:ENTRY ID:1548:ENTRY NAME:Abuse Elevation Control Mechanism::,,
