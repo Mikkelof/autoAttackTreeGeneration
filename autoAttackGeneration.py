@@ -15,22 +15,23 @@ def parse_execution_flow(execution_flow):
     instructionsSummarize = (
         "Rewrite the text as a super short, actionable step. "
         "You should NOT add anything, such as further instructions or additional information, to the text. "
-        "It should only be text, no markdown, code, lists or anything like that."
+        "It should only be the single actionable step as text, NO markdown, code, lists, or anything like that."
     )
     
     instructionsChildren = (
-        "Create zero to four methods or prerequisites for this method to be executed, as if they were child nodes to the given method in an attack tree. "
+        "Create zero to four methods or prerequisites for this method to be executed by an attacker, as if they were child nodes to the given method in an attack tree. "
         "For example if the method is to get the combination from the target, the child nodes could be threaten, blackmail, eavesdrop or bribe. "
-        "Format response as a JSON array of strings (not dictionaries) containing ONLY the short, actionable steps. "
+        "Format response as a JSON array of strings (not dictionaries) containing ONLY the short, actionable steps, so do NOT include further steps, lists, code, markdown etc.. "
         "Example: [\"Step 1\", \"Step 2\", \"Step 3\"]"
     )
 
     instructionsAdditionalMethods = (
         "Generate up to 2 additional attack methods for the following attack objective. "
         "They should be short, actionable steps and not duplicates of any methods already provided. "
+        "Each step should only be the single actionable step as text, NO markdown, code, lists, or anything like that. "
         "Use the entire objective description provided below. "
         "Format the response as a JSON array of strings (not dictionaries) containing ONLY the short, "
-        "actionable steps, no markdown, code, lists or anything like that. For example: [\"Method 1\", \"Method 2\"]"
+        "actionable steps, do NOT include instructions for each step, lists, markdown, code or anything like that. For example: [\"Method 1\", \"Method 2\"]"
     )
     
     steps = execution_flow.split('::STEP:')[1:]
@@ -164,7 +165,7 @@ def parse_related_patterns(related_patterns):
     entries = related_patterns.split('::')
     for entry in entries:
         parts = entry.split(':')
-        if len(parts) >= 4 and parts[0] == 'NATURE' and parts[1] in ['CanFollow', 'ChildOf']:
+        if len(parts) >= 4 and parts[0] == 'NATURE' and parts[1] in ['CanFollow']:
             child_nodes.append(f"CAPEC-{parts[3]}")
     return child_nodes
 
@@ -245,4 +246,4 @@ def callGPT(instructions, originalText):
         print(f"Error: {response.status_code}, {response.text}")
         return ""
 
-process_capec("234", "./capec_data/")
+process_capec("100", "./capec_data/")
