@@ -1,2 +1,2 @@
 ID,Name,Abstraction,Status,Description,Alternate Terms,Likelihood Of Attack,Typical Severity,Related Attack Patterns,Execution Flow,Prerequisites,Skills Required,Resources Required,Indicators,Consequences,Mitigations,Example Instances,Related Weaknesses,Taxonomy Mappings,Notes
-429,Target Influence via Eye Cues,Detailed,Draft,The adversary gains information via non-verbal means from the target through eye movements.,,,Low,::NATURE:ChildOf:CAPEC ID:427::,,,,,,,,,,,,
+429,Target Influence via Eye Cues,Detailed,Draft,The adversary gains information via non-verbal means from the target through eye movements.,,,Low,::NATURE:ChildOf:CAPEC ID:427::,,,,,,,,,,,

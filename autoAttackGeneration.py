@@ -13,7 +13,7 @@ def parse_execution_flow(execution_flow):
     instructionsSummarize = (
         "Rewrite the text as a super short, actionable step. "
         "You should NOT add anything, such as further instructions or additional information, to the text. "
-        "It should only be text, no markdown, code, lists or anything like that."
+        "It should only be text, no markdown, code, numbered lists or anything like that. JUST a short string."
     )
     
     steps = execution_flow.split('::STEP:')[1:]
@@ -68,7 +68,6 @@ def include_capec(capec_id, capec_dir):
             reader = csv.DictReader(csvfile)
             for row in reader:
                 abstraction = row['Abstraction']
-                print(abstraction)
                 if abstraction in ('Standard', 'Detailed'):
                     return True
     return False
@@ -133,4 +132,4 @@ def callGPT(instructions, originalText):
         print(f"Error: {response.status_code}, {response.text}")
         return ""
 
-process_capec("234", "./capec_data/")
+process_capec("600", "./capec_data/")

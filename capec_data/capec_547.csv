@@ -1,2 +1,2 @@
 ID,Name,Abstraction,Status,Description,Alternate Terms,Likelihood Of Attack,Typical Severity,Related Attack Patterns,Execution Flow,Prerequisites,Skills Required,Resources Required,Indicators,Consequences,Mitigations,Example Instances,Related Weaknesses,Taxonomy Mappings,Notes
-547,Physical Destruction of Device or Component,Standard,Draft,"An adversary conducts a physical attack a device or component, destroying it such that it no longer functions as intended.",,,,::NATURE:ChildOf:CAPEC ID:607::,,,,,,,,,,,,
+547,Physical Destruction of Device or Component,Standard,Draft,"An adversary conducts a physical attack a device or component, destroying it such that it no longer functions as intended.",,,,::NATURE:ChildOf:CAPEC ID:607::,,,,,,,,,,,

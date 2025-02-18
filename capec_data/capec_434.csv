@@ -1,2 +1,2 @@
 ID,Name,Abstraction,Status,Description,Alternate Terms,Likelihood Of Attack,Typical Severity,Related Attack Patterns,Execution Flow,Prerequisites,Skills Required,Resources Required,Indicators,Consequences,Mitigations,Example Instances,Related Weaknesses,Taxonomy Mappings,Notes
-434,Target Influence via Interview and Interrogation,Detailed,Draft,,,,Low,::NATURE:ChildOf:CAPEC ID:427::,,,,,,,,,,,,
+434,Target Influence via Interview and Interrogation,Detailed,Draft,,,,Low,::NATURE:ChildOf:CAPEC ID:427::,,,,,,,,,,,
