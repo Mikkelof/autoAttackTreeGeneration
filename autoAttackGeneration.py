@@ -41,13 +41,15 @@ def parse_execution_flow(execution_flow):
     
     return objectives
 
-def parse_related_patterns(related_patterns):
+def parse_related_patterns(related_patterns, capec_dir):
     child_nodes = []
     entries = related_patterns.split('::')
     for entry in entries:
         parts = entry.split(':')
-        if len(parts) >= 4 and parts[0] == 'NATURE' and parts[1] in ['CanFollow', 'ChildOf']:
-            child_nodes.append(f"CAPEC-{parts[3]}")
+        if len(parts) >= 4 and parts[0] == 'NATURE' and parts[1] in ['CanFollow']:
+            include = include_capec(parts[3], capec_dir)
+            if include:
+                child_nodes.append(f"CAPEC-{parts[3]}")
     return child_nodes
 
 def get_capec_name(capec_id, capec_dir):
@@ -58,6 +60,18 @@ def get_capec_name(capec_id, capec_dir):
             for row in reader:
                 return row['Name']
     return f"CAPEC-{capec_id}"
+
+def include_capec(capec_id, capec_dir):
+    capec_file = os.path.join(capec_dir, f"capec_{capec_id}.csv")
+    if os.path.exists(capec_file):
+        with open(capec_file, newline='', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                abstraction = row['Abstraction']
+                print(abstraction)
+                if abstraction in ('Standard', 'Detailed'):
+                    return True
+    return False
 
 def build_attack_tree(name, id, execution_flow_data, child_nodes, capec_dir):
     tree = [f"{name} (CAPEC-{id})"]
@@ -90,7 +104,7 @@ def process_capec(capec_id, capec_dir):
         reader = csv.DictReader(csvfile)
         for row in reader:
             execution_flow_data = parse_execution_flow(row['Execution Flow'])
-            child_nodes = parse_related_patterns(row['Related Attack Patterns'])
+            child_nodes = parse_related_patterns(row['Related Attack Patterns'], capec_dir)
             attack_tree = build_attack_tree(row['Name'], row['ID'], execution_flow_data, child_nodes, capec_dir)
             print(attack_tree)
 
