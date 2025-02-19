@@ -3,6 +3,7 @@ import csv
 import requests
 import json
 import re
+from collections import defaultdict
 
 class Node:
     def __init__(self, originalBody="", actionableBody=""):
@@ -11,23 +12,40 @@ class Node:
 
 def parse_execution_flow(execution_flow):
     instructionsSummarize = (
-        "Rewrite the text as a super short, actionable step. "
-        "You should NOT add anything, such as further instructions or additional information, to the text. "
-        "It should only be text, no markdown, code, numbered lists or anything like that. JUST a short string."
+        "Rewrite the text as one concise, actionable sentence. Do not include any bullet points, numbered steps, markdown, or extra information — only a single sentence. "
+        "You should NOT add anything, such as further instructions or additional information, to the text."
     )
     
     steps = execution_flow.split('::STEP:')[1:]
     objectives = []
     
-    for step in steps:
+    for step_idx, step in enumerate(steps, 1):
+        objective = None
+        objective_title = ""
+        
         if 'DESCRIPTION:[' in step:
             start = step.index('DESCRIPTION:[') + len('DESCRIPTION:[')
             end = step.index(']', start)
             objective_title = step[start:end].strip()
             objective = f"[{objective_title}]"
-        else:
-            objective = None
+        elif 'DESCRIPTION:' in step:
+            start = step.index('DESCRIPTION:') + len('DESCRIPTION:')
+            end = step.find('::', start)
+            if end == -1:
+                end = len(step)
+            objective_title = step[start:end].strip()
+            objective = f"[Step {step_idx}] {objective_title}"
+        
+        if not objective and 'PHASE:' in step:
+            phase_start = step.index('PHASE:') + len('PHASE:')
+            phase_end = step.find(':', phase_start)
+            phase = step[phase_start:phase_end].strip() if phase_end != -1 else "Unknown"
+            objective = f"[{phase} Phase]"
+        
+        if not objective:
+            objective = f"[Step {step_idx}]"
 
+        # Extract methods
         methods = []
         technique_parts = step.split('TECHNIQUE:')[1:]
         for tech in technique_parts:
@@ -36,8 +54,7 @@ def parse_execution_flow(execution_flow):
                 actionable_method = callGPT(instructionsSummarize, method)
                 methods.append(Node(method, actionable_method))
         
-        if objective:
-            objectives.append((objective, methods))
+        objectives.append((objective, methods))
     
     return objectives
 
@@ -47,19 +64,9 @@ def parse_related_patterns(related_patterns, capec_dir):
     for entry in entries:
         parts = entry.split(':')
         if len(parts) >= 4 and parts[0] == 'NATURE' and parts[1] in ['CanFollow']:
-            include = include_capec(parts[3], capec_dir)
-            if include:
+            if include_capec(parts[3], capec_dir):
                 child_nodes.append(f"CAPEC-{parts[3]}")
     return child_nodes
-
-def get_capec_name(capec_id, capec_dir):
-    capec_file = os.path.join(capec_dir, f"capec_{capec_id}.csv")
-    if os.path.exists(capec_file):
-        with open(capec_file, newline='', encoding='utf-8') as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                return row['Name']
-    return f"CAPEC-{capec_id}"
 
 def include_capec(capec_id, capec_dir):
     capec_file = os.path.join(capec_dir, f"capec_{capec_id}.csv")
@@ -72,8 +79,9 @@ def include_capec(capec_id, capec_dir):
                     return True
     return False
 
-def build_attack_tree(name, id, execution_flow_data, child_nodes, capec_dir):
-    tree = [f"{name} (CAPEC-{id})"]
+def build_attack_tree(name, capec_id, execution_flow_data, count):
+    duplicate_note = " (duplicate)" if count > 1 else ""
+    tree = [f"{name} (CAPEC-{capec_id}){duplicate_note}"]
     
     for obj_idx, (objective, methods) in enumerate(execution_flow_data):
         obj_prefix = '└─' if obj_idx == len(execution_flow_data) - 1 else '├─'
@@ -83,29 +91,54 @@ def build_attack_tree(name, id, execution_flow_data, child_nodes, capec_dir):
         for method_idx, method in enumerate(methods):
             m_prefix = '└─' if method_idx == len(methods) - 1 else '├─'
             tree.append(f"{indent}{m_prefix} Attack Method: {method.actionableBody}")
+    
+    return tree
 
-    if child_nodes:
-        tree.append(f"└─ Potential Child Nodes:")
-        for k, child in enumerate(child_nodes):
-            child_name = get_capec_name(child.split('-')[1], capec_dir)
-            c_prefix = '├─' if k < len(child_nodes) - 1 else '└─'
-            tree.append(f"   {c_prefix} {child_name} ({child})")
-
-    return '\n'.join(tree)
-
-def process_capec(capec_id, capec_dir):
+def process_capec(capec_id, capec_dir, current_path=None, duplicates=None):
+    if current_path is None:
+        current_path = []
+    if duplicates is None:
+        duplicates = defaultdict(int)
+    
+    if capec_id in current_path:
+        return []
+    
+    duplicates[capec_id] += 1
+    
     capec_file = os.path.join(capec_dir, f"capec_{capec_id}.csv")
     if not os.path.exists(capec_file):
         print(f"CAPEC-{capec_id} file not found.")
-        return
+        return []
     
     with open(capec_file, newline='', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
             execution_flow_data = parse_execution_flow(row['Execution Flow'])
             child_nodes = parse_related_patterns(row['Related Attack Patterns'], capec_dir)
-            attack_tree = build_attack_tree(row['Name'], row['ID'], execution_flow_data, child_nodes, capec_dir)
-            print(attack_tree)
+            current_lines = build_attack_tree(row['Name'], capec_id, execution_flow_data, duplicates[capec_id])
+            
+            if child_nodes:
+                current_lines.append("└─ Child Nodes:")
+                for i, child in enumerate(child_nodes):
+                    child_id = child.split('-')[1]
+                    child_sub_lines = process_capec(child_id, capec_dir, current_path + [capec_id], duplicates)
+                    if not child_sub_lines:
+                        continue
+                    
+                    if i == len(child_nodes) - 1:
+                        connector = '   └─ '
+                        indent = '    '
+                    else:
+                        connector = '   ├─ '
+                        indent = '   │  '
+                    
+                    current_lines.append(connector + child_sub_lines[0])
+                    for line in child_sub_lines[1:]:
+                        current_lines.append(indent + line)
+            
+            return current_lines
+    
+    return []
 
 def callGPT(instructions, originalText):
     url = 'http://localhost:1234/v1/chat/completions'
@@ -132,4 +165,14 @@ def callGPT(instructions, originalText):
         print(f"Error: {response.status_code}, {response.text}")
         return ""
 
-process_capec("600", "./capec_data/")
+if __name__ == "__main__":
+    capec_id = "653"
+    capec_dir = "./capec_data/"
+    duplicates = defaultdict(int)
+    attack_tree_lines = process_capec(capec_id, capec_dir, duplicates=duplicates)
+    
+    print('\n'.join(attack_tree_lines))
+    print("\nDuplicate Nodes Report:")
+    for capec_id, count in duplicates.items():
+        if count > 1:
+            print(f"- CAPEC-{capec_id} appears {count} times in the tree")
