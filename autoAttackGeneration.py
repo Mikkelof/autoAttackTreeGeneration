@@ -4,6 +4,8 @@ import requests
 import json
 import re
 from collections import defaultdict
+from rich.tree import Tree
+from rich.console import Console
 
 class Node:
     def __init__(self, originalBody="", actionableBody=""):
@@ -45,7 +47,6 @@ def parse_execution_flow(execution_flow):
         if not objective:
             objective = f"[Step {step_idx}]"
 
-        # Extract methods
         methods = []
         technique_parts = step.split('TECHNIQUE:')[1:]
         for tech in technique_parts:
@@ -79,67 +80,6 @@ def include_capec(capec_id, capec_dir):
                     return True
     return False
 
-def build_attack_tree(name, capec_id, execution_flow_data, count):
-    duplicate_note = " (duplicate)" if count > 1 else ""
-    tree = [f"{name} (CAPEC-{capec_id}){duplicate_note}"]
-    
-    for obj_idx, (objective, methods) in enumerate(execution_flow_data):
-        obj_prefix = '└─' if obj_idx == len(execution_flow_data) - 1 else '├─'
-        tree.append(f"{obj_prefix} Attack Objective: {objective}")
-        indent = '   ' if obj_prefix == '└─' else '│  '
-        
-        for method_idx, method in enumerate(methods):
-            m_prefix = '└─' if method_idx == len(methods) - 1 else '├─'
-            tree.append(f"{indent}{m_prefix} Attack Method: {method.actionableBody}")
-    
-    return tree
-
-def process_capec(capec_id, capec_dir, current_path=None, duplicates=None):
-    if current_path is None:
-        current_path = []
-    if duplicates is None:
-        duplicates = defaultdict(int)
-    
-    if capec_id in current_path:
-        return []
-    
-    duplicates[capec_id] += 1
-    
-    capec_file = os.path.join(capec_dir, f"capec_{capec_id}.csv")
-    if not os.path.exists(capec_file):
-        print(f"CAPEC-{capec_id} file not found.")
-        return []
-    
-    with open(capec_file, newline='', encoding='utf-8') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            execution_flow_data = parse_execution_flow(row['Execution Flow'])
-            child_nodes = parse_related_patterns(row['Related Attack Patterns'], capec_dir)
-            current_lines = build_attack_tree(row['Name'], capec_id, execution_flow_data, duplicates[capec_id])
-            
-            if child_nodes:
-                current_lines.append("└─ Child Nodes:")
-                for i, child in enumerate(child_nodes):
-                    child_id = child.split('-')[1]
-                    child_sub_lines = process_capec(child_id, capec_dir, current_path + [capec_id], duplicates)
-                    if not child_sub_lines:
-                        continue
-                    
-                    if i == len(child_nodes) - 1:
-                        connector = '   └─ '
-                        indent = '    '
-                    else:
-                        connector = '   ├─ '
-                        indent = '   │  '
-                    
-                    current_lines.append(connector + child_sub_lines[0])
-                    for line in child_sub_lines[1:]:
-                        current_lines.append(indent + line)
-            
-            return current_lines
-    
-    return []
-
 def callGPT(instructions, originalText):
     url = 'http://localhost:1234/v1/chat/completions'
     headers = {"Content-Type": "application/json"}
@@ -165,14 +105,60 @@ def callGPT(instructions, originalText):
         print(f"Error: {response.status_code}, {response.text}")
         return ""
 
+def build_attack_tree_rich(name, capec_id, execution_flow_data, count):
+    duplicate_note = " (duplicate)" if count > 1 else ""
+    root = Tree(f"[bold]{name} (CAPEC-{capec_id}){duplicate_note}[/bold]")
+    for objective, methods in execution_flow_data:
+        objective_branch = root.add(f"[cyan]Attack Objective:[/cyan] {objective}")
+        for method in methods:
+            objective_branch.add(f"[magenta]Attack Method:[/magenta] {method.actionableBody}")
+    return root
+
+def process_capec_rich(capec_id, capec_dir, current_path=None, duplicates=None):
+    if current_path is None:
+        current_path = []
+    if duplicates is None:
+        duplicates = defaultdict(int)
+    
+    if capec_id in current_path:
+        return None
+    
+    duplicates[capec_id] += 1
+    
+    capec_file = os.path.join(capec_dir, f"capec_{capec_id}.csv")
+    if not os.path.exists(capec_file):
+        print(f"CAPEC-{capec_id} file not found.")
+        return None
+    
+    with open(capec_file, newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            execution_flow_data = parse_execution_flow(row['Execution Flow'])
+            child_nodes = parse_related_patterns(row['Related Attack Patterns'], capec_dir)
+            root_tree = build_attack_tree_rich(row['Name'], capec_id, execution_flow_data, duplicates[capec_id])
+            if child_nodes:
+                children_branch = root_tree.add("[green]Child Nodes[/green]")
+                for child in child_nodes:
+                    child_id = child.split('-')[1]
+                    child_tree = process_capec_rich(child_id, capec_dir, current_path + [capec_id], duplicates)
+                    if child_tree is not None:
+                        children_branch.add(child_tree)
+            return root_tree
+    return None
+
 if __name__ == "__main__":
     capec_id = "653"
     capec_dir = "./capec_data/"
     duplicates = defaultdict(int)
-    attack_tree_lines = process_capec(capec_id, capec_dir, duplicates=duplicates)
+    tree = process_capec_rich(capec_id, capec_dir, duplicates=duplicates)
     
-    print('\n'.join(attack_tree_lines))
+    console = Console()
+    if tree is not None:
+        console.print(tree)
+    else:
+        print("No attack tree generated.")
+    
     print("\nDuplicate Nodes Report:")
-    for capec_id, count in duplicates.items():
+    for cid, count in duplicates.items():
         if count > 1:
-            print(f"- CAPEC-{capec_id} appears {count} times in the tree")
+            print(f"- CAPEC-{cid} appears {count} times in the tree")
