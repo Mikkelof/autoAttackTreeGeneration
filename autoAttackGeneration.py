@@ -80,6 +80,46 @@ def include_capec(capec_id, capec_dir):
                     return True
     return False
 
+def parse_related_cwe_ids(related_cwe_text):
+    """
+    Extract CWE IDs from the Related Weaknesses column.
+    For example, from "::732::648::" it will return ['732', '648'].
+    """
+    return re.findall(r'::(\d+)::', related_cwe_text)
+
+def generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, num_steps=3):
+    """
+    Reads all related CWE entries, aggregates their key information, and
+    calls the LLM to generate a fixed number of actionable attack steps.
+    """
+    all_cwe_info = ""
+    for cwe_id in cwe_ids:
+        cwe_file = os.path.join(cwe_dir, f"cwe_{cwe_id}.csv")
+        if os.path.exists(cwe_file):
+            with open(cwe_file, newline='', encoding='utf-8') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    cwe_info = (
+                        f"Name: {row['Name']}. "
+                        f"Description: {row['Description']}. "
+                        f"Extended Description: {row['Extended Description']}."
+                        f"Observed Examples: {row['Observed Examples']}."
+                    )
+                    all_cwe_info += cwe_info + "\n"
+    if not all_cwe_info:
+        return []
+    
+    instructions_cwe = (
+        f"Based solely on the following CWE information:\n{all_cwe_info}\n"
+        f"Generate {num_steps} concise, actionable attack steps that detail how an attacker might exploit these weaknesses. "
+        "Each step should be a single actionable sentence starting with a verb, and you must not add any information not present in the provided text. "
+        "Do not add any numbering/markup or other types of formating."
+    )
+    
+    response = callGPT(instructions_cwe, all_cwe_info)
+    steps = [step.strip() for step in response.split('\n') if step.strip()]
+    return steps
+
 def callGPT(instructions, originalText):
     url = 'http://localhost:1234/v1/chat/completions'
     headers = {"Content-Type": "application/json"}
@@ -114,7 +154,7 @@ def build_attack_tree_rich(name, capec_id, execution_flow_data, count):
             objective_branch.add(f"[magenta]Attack Method:[/magenta] {method.actionableBody}")
     return root
 
-def process_capec_rich(capec_id, capec_dir, current_path=None, duplicates=None):
+def process_capec_rich(capec_id, capec_dir, cwe_dir, current_path=None, duplicates=None):
     if current_path is None:
         current_path = []
     if duplicates is None:
@@ -136,21 +176,32 @@ def process_capec_rich(capec_id, capec_dir, current_path=None, duplicates=None):
             execution_flow_data = parse_execution_flow(row['Execution Flow'])
             child_nodes = parse_related_patterns(row['Related Attack Patterns'], capec_dir)
             root_tree = build_attack_tree_rich(row['Name'], capec_id, execution_flow_data, duplicates[capec_id])
+            
             if child_nodes:
-                children_branch = root_tree.add("[green]Child Nodes[/green]")
+                children_branch = root_tree.add("[green]Child CAPEC Nodes[/green]")
                 for child in child_nodes:
                     child_id = child.split('-')[1]
-                    child_tree = process_capec_rich(child_id, capec_dir, current_path + [capec_id], duplicates)
+                    child_tree = process_capec_rich(child_id, capec_dir, cwe_dir, current_path + [capec_id], duplicates)
                     if child_tree is not None:
                         children_branch.add(child_tree)
+            
+            cwe_field = row.get('Related Weaknesses', '')
+            cwe_ids = parse_related_cwe_ids(cwe_field)
+            if cwe_ids:
+                cwe_branch = root_tree.add("[yellow]Related CWE Attack Steps[/yellow]")
+                cwe_attack_steps = generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, num_steps=3)
+                for step in cwe_attack_steps:
+                    cwe_branch.add(f"[orange]CWE Attack Step:[/orange] {step}")
+            
             return root_tree
     return None
 
 if __name__ == "__main__":
-    capec_id = "653"
+    capec_id = "234"
     capec_dir = "./capec_data/"
+    cwe_dir = "./cwe_data/"
     duplicates = defaultdict(int)
-    tree = process_capec_rich(capec_id, capec_dir, duplicates=duplicates)
+    tree = process_capec_rich(capec_id, capec_dir, cwe_dir, duplicates=duplicates)
     
     console = Console()
     if tree is not None:
