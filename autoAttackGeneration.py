@@ -81,17 +81,9 @@ def include_capec(capec_id, capec_dir):
     return False
 
 def parse_related_cwe_ids(related_cwe_text):
-    """
-    Extract CWE IDs from the Related Weaknesses column.
-    For example, from "::732::648::" it will return ['732', '648'].
-    """
     return re.findall(r'::(\d+)::', related_cwe_text)
 
 def generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, num_steps=3):
-    """
-    Reads all related CWE entries, aggregates their key information, and
-    calls the LLM to generate a fixed number of actionable attack steps.
-    """
     all_cwe_info = ""
     for cwe_id in cwe_ids:
         cwe_file = os.path.join(cwe_dir, f"cwe_{cwe_id}.csv")
@@ -110,12 +102,17 @@ def generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, num_steps=3):
         return []
     
     instructions_cwe = (
-        f"Based solely on the following CWE information:\n{all_cwe_info}\n"
-        f"Generate {num_steps} concise, actionable attack steps that detail how an attacker might exploit these weaknesses. "
-        "Each step should be a single actionable sentence starting with a verb, and you must not add any information not present in the provided text. "
-        "Do not add any numbering/markup or other types of formating."
+        f"Generate {num_steps} concise attack steps following these rules:\n"
+        "1. Each step MUST start with a strong imperative verb (e.g., 'Exploit', 'Bypass', 'Brute-force')\n"
+        "2. Never use markdown, asterisks (**), bold, italics, or special formatting\n"
+        "3. Follow this exact format: '[action verb] [method] to [impact]'\n"
+        "4. Never mention 'attackers can' - focus on direct actions\n"
+        "5. Use complete sentences but keep under 15 words\n\n"
+        "Bad Example: **Attackers can bypass authentication...**\n"
+        "Good Example: Exploit weak password requirements to bypass authentication mechanisms\n\n"
+        "Now generate plain text steps following these rules."
     )
-    
+        
     response = callGPT(instructions_cwe, all_cwe_info)
     steps = [step.strip() for step in response.split('\n') if step.strip()]
     return steps
@@ -197,7 +194,7 @@ def process_capec_rich(capec_id, capec_dir, cwe_dir, current_path=None, duplicat
     return None
 
 if __name__ == "__main__":
-    capec_id = "234"
+    capec_id = "653"
     capec_dir = "./capec_data/"
     cwe_dir = "./cwe_data/"
     duplicates = defaultdict(int)
