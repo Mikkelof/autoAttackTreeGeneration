@@ -70,6 +70,8 @@ def parse_related_patterns(related_patterns, capec_dir):
     return child_nodes
 
 def include_capec(capec_id, capec_dir):
+    if capec_id.startswith("CAPEC-"):
+        capec_id = capec_id.split('-')[1]
     capec_file = os.path.join(capec_dir, f"capec_{capec_id}.csv")
     if os.path.exists(capec_file):
         with open(capec_file, newline='', encoding='utf-8') as csvfile:
@@ -103,12 +105,13 @@ def generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, num_steps=3):
     
     instructions_cwe = (
         f"Generate {num_steps} concise attack steps following these rules:\n"
-        "1. Each step MUST start with a strong imperative verb (e.g., 'Exploit', 'Bypass', 'Brute-force')\n"
+        "1. Each step MUST start with a strong imperative verb (for example, but not limited to 'Intercept', 'Bypass' or 'Brute-force')\n"
         "2. Never use markdown, asterisks (**), bold, italics, or special formatting\n"
         "3. Follow this exact format: '[action verb] [method] to [impact]'\n"
         "4. Never mention 'attackers can' - focus on direct actions\n"
-        "5. Use complete sentences but keep under 15 words\n\n"
-        "Bad Example: **Attackers can bypass authentication...**\n"
+        "5. Do NOT start with 'Step 1:' or '1.' or any numbering, skip directly to the verb'\n"
+        "6. Use complete sentences but keep under 15 words\n\n"
+        "Bad Example: **Step 1:** Intercept CAPTCHA mechanisms by...\n"
         "Good Example: Exploit weak password requirements to bypass authentication mechanisms\n\n"
         "Now generate plain text steps following these rules."
     )
@@ -157,6 +160,9 @@ def process_capec_rich(capec_id, capec_dir, cwe_dir, current_path=None, duplicat
     if duplicates is None:
         duplicates = defaultdict(int)
     
+    if capec_id.startswith("CAPEC-"):
+        capec_id = capec_id.split('-')[1]
+    
     if capec_id in current_path:
         return None
     
@@ -193,18 +199,108 @@ def process_capec_rich(capec_id, capec_dir, cwe_dir, current_path=None, duplicat
             return root_tree
     return None
 
+def get_ancestry_chain(capec_id, capec_dir):
+    chain = []
+    current_id = capec_id.split('-')[1] if capec_id.startswith("CAPEC-") else capec_id
+    while True:
+        chain.append(current_id)
+        capec_file = os.path.join(capec_dir, f"capec_{current_id}.csv")
+        if not os.path.exists(capec_file):
+            break
+        parent_id = None
+        with open(capec_file, newline='', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile)
+            row = next(reader, None)
+            if row:
+                related_patterns = row.get('Related Attack Patterns', '')
+                for entry in related_patterns.split('::'):
+                    parts = entry.split(':')
+                    if len(parts) >= 4 and parts[0] == "NATURE" and parts[1] == "ChildOf":
+                        parent_id = parts[3].strip()
+                        if parent_id.startswith("CAPEC-"):
+                            parent_id = parent_id.split('-')[1]
+                        break
+        if parent_id:
+            current_id = parent_id
+        else:
+            break
+    chain.reverse()
+    return chain
+
+def get_capec_title(capec_id, capec_dir):
+    capec_file = os.path.join(capec_dir, f"capec_{capec_id}.csv")
+    if not os.path.exists(capec_file):
+        return f"CAPEC-{capec_id}"
+    with open(capec_file, newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        row = next(reader, None)
+        if row:
+            return row.get('Name', f"CAPEC-{capec_id}")
+        else:
+            return f"CAPEC-{capec_id}"
+
+def parse_parent_of_relationships_for_capec(capec_id, capec_dir):
+    children = []
+    capec_file = os.path.join(capec_dir, f"capec_{capec_id}.csv")
+    if not os.path.exists(capec_file):
+        return children
+    with open(capec_file, newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        row = next(reader, None)
+        if row:
+            related_patterns = row.get('Related Attack Patterns', '')
+            for entry in related_patterns.split('::'):
+                parts = entry.split(':')
+                if len(parts) >= 4 and parts[0] == "NATURE" and parts[1] == "ParentOf":
+                    child_id = parts[3].strip()
+                    if child_id.startswith("CAPEC-"):
+                        child_id = child_id.split('-')[1]
+                    children.append(child_id)
+    return children
+
+def build_ancestry_subtree(chain, index, capec_dir, elaborated_tree):
+    current_id = chain[index]
+    current_title = get_capec_title(current_id, capec_dir)
+    node_label = f"{current_title} (CAPEC-{current_id})"
+    tree_node = Tree(f"[bold]{node_label}[/bold]")
+    
+    if index < len(chain) - 1:
+        children_ids = parse_parent_of_relationships_for_capec(current_id, capec_dir)
+        relevant_child = chain[index + 1]
+        if relevant_child not in children_ids:
+            children_ids.append(relevant_child)
+        children_ids = list(dict.fromkeys(children_ids))
+        
+        for child_id in children_ids:
+            child_title = get_capec_title(child_id, capec_dir)
+            if child_id == relevant_child:
+                subtree = build_ancestry_subtree(chain, index + 1, capec_dir, elaborated_tree)
+                tree_node.add(subtree)
+            else:
+                tree_node.add(f"[dim]{child_title} (CAPEC-{child_id})[/dim]")
+        return tree_node
+    else:
+        return elaborated_tree
+
 if __name__ == "__main__":
-    capec_id = "653"
+    starting_capec_id = "653"
     capec_dir = "./capec_data/"
     cwe_dir = "./cwe_data/"
     duplicates = defaultdict(int)
-    tree = process_capec_rich(capec_id, capec_dir, cwe_dir, duplicates=duplicates)
     
-    console = Console()
-    if tree is not None:
-        console.print(tree)
-    else:
+    elaborated_tree = process_capec_rich(starting_capec_id, capec_dir, cwe_dir, duplicates=duplicates)
+    
+    if elaborated_tree is None:
         print("No attack tree generated.")
+    else:
+        ancestry_chain = get_ancestry_chain(starting_capec_id, capec_dir)
+        if len(ancestry_chain) > 1:
+            full_tree = build_ancestry_subtree(ancestry_chain, 0, capec_dir, elaborated_tree)
+        else:
+            full_tree = elaborated_tree
+        
+        console = Console()
+        console.print(full_tree)
     
     print("\nDuplicate Nodes Report:")
     for cid, count in duplicates.items():
