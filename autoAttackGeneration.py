@@ -283,7 +283,7 @@ def build_ancestry_subtree(chain, index, capec_dir, elaborated_tree):
         return elaborated_tree
 
 if __name__ == "__main__":
-    starting_capec_id = "653"
+    starting_capec_id = "105"
     capec_dir = "./capec_data/"
     cwe_dir = "./cwe_data/"
     duplicates = defaultdict(int)
