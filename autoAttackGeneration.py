@@ -13,10 +13,11 @@ class Node:
         self.actionableBody = actionableBody
 
 class GraphNode:
-    def __init__(self, label, dimmed=False):
+    def __init__(self, label, dimmed=False, is_and=False):
         self.label = label
         self.dimmed = dimmed
         self.children = []
+        self.is_and = is_and
 
 def parse_execution_flow(execution_flow):
     instructionsSummarize = (
@@ -28,9 +29,6 @@ def parse_execution_flow(execution_flow):
     objectives = []
     
     for step_idx, step in enumerate(steps, 1):
-        objective = None
-        objective_title = ""
-        
         if 'DESCRIPTION:[' in step:
             start = step.index('DESCRIPTION:[') + len('DESCRIPTION:[')
             end = step.index(']', start)
@@ -43,16 +41,9 @@ def parse_execution_flow(execution_flow):
                 end = len(step)
             objective_title = step[start:end].strip()
             objective = f"[Step {step_idx}] {objective_title}"
-        
-        if not objective and 'PHASE:' in step:
-            phase_start = step.index('PHASE:') + len('PHASE:')
-            phase_end = step.find(':', phase_start)
-            phase = step[phase_start:phase_end].strip() if phase_end != -1 else "Unknown"
-            objective = f"[{phase} Phase]"
-        
-        if not objective:
+        else:
             objective = f"[Step {step_idx}]"
-
+        
         methods = []
         technique_parts = step.split('TECHNIQUE:')[1:]
         for tech in technique_parts:
@@ -115,7 +106,7 @@ def generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, num_steps=3):
         "2. Never use markdown, asterisks (**), bold, italics, or special formatting\n"
         "3. Follow this exact format: '[action verb] [method] to [impact]'\n"
         "4. Never mention 'attackers can' - focus on direct actions\n"
-        "5. Do NOT start with 'Step 1:' or '1.' or any numbering, skip directly to the verb'\n"
+        "5. Do NOT start with 'Step 1:' or '1.' or any numbering, skip directly to the verb\n"
         "6. Use complete sentences but keep under 15 words\n\n"
         "Bad Example: **Step 1:** Intercept CAPTCHA mechanisms by...\n"
         "Good Example: Exploit weak password requirements to bypass authentication mechanisms\n\n"
@@ -174,18 +165,29 @@ def process_capec_graph(capec_id, capec_dir, cwe_dir, current_path=None, duplica
         reader = csv.DictReader(csvfile)
         for row in reader:
             execution_flow_data = parse_execution_flow(row['Execution Flow'])
-            child_nodes = parse_related_patterns(row['Related Attack Patterns'], capec_dir)
+            objectives = [(objective, methods) for objective, methods in execution_flow_data]
+            
             root_label = f"{row['Name']} (CAPEC-{capec_id})"
             if duplicates[capec_id] > 1:
                 root_label += " (duplicate)"
             root_node = GraphNode(root_label)
             
-            for objective, methods in execution_flow_data:
+            if len(objectives) > 1:
+                and_node = GraphNode("AND", is_and=True)
+                for objective, methods in objectives:
+                    objective_node = GraphNode(f"Attack Objective: {objective}")
+                    for method in methods:
+                        objective_node.children.append(GraphNode(f"Attack Method: {method.actionableBody}"))
+                    and_node.children.append(objective_node)
+                root_node.children.append(and_node)
+            elif objectives:
+                objective, methods = objectives[0]
                 objective_node = GraphNode(f"Attack Objective: {objective}")
                 for method in methods:
                     objective_node.children.append(GraphNode(f"Attack Method: {method.actionableBody}"))
                 root_node.children.append(objective_node)
             
+            child_nodes = parse_related_patterns(row['Related Attack Patterns'], capec_dir)
             if child_nodes:
                 for child in child_nodes:
                     child_id = child.split('-')[1]
@@ -287,6 +289,9 @@ def build_ancestry_subtree_graph(chain, index, capec_dir, elaborated_tree):
         return elaborated_tree
 
 def get_node_attributes(graph_node):
+    if graph_node.is_and:
+        return {"style": "filled", "fillcolor": "white", "fontcolor": "black", "shape": "triangle"}
+    
     if graph_node.dimmed:
         return {"style": "filled", "fillcolor": "gray80", "fontcolor": "gray50"}
     
@@ -300,19 +305,23 @@ def get_node_attributes(graph_node):
     else:
          return {"style": "filled", "fillcolor": "lightblue"}
 
-def add_nodes_edges(dot, graph_node, node_mapping, parent_id=None, node_counter=[1]):
-    current_id = f"node{node_counter[0]}"
-    node_counter[0] += 1
-    node_mapping[current_id] = graph_node.label
+def add_nodes_edges(dot, graph_node, node_mapping, parent_id=None, mapping_counter=[1], and_counter=[1]):
+    if graph_node.is_and:
+        current_id = "and" + str(and_counter[0])
+        and_counter[0] += 1
+        node_label = "AND"
+    else:
+        current_id = "node" + str(mapping_counter[0])
+        mapping_counter[0] += 1
+        node_label = current_id
+        node_mapping[current_id] = graph_node.label
 
-    attrs = get_node_attributes(graph_node)
-    dot.node(current_id, current_id, **attrs)
-    
+    dot.node(current_id, node_label, **get_node_attributes(graph_node))
     if parent_id:
         dot.edge(parent_id, current_id)
     
     for child in graph_node.children:
-        add_nodes_edges(dot, child, node_mapping, parent_id=current_id, node_counter=node_counter)
+        add_nodes_edges(dot, child, node_mapping, parent_id=current_id, mapping_counter=mapping_counter, and_counter=and_counter)
 
 def generate_attack_tree_graph():
     starting_capec_id = "CAPEC-600"
