@@ -117,6 +117,42 @@ def generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, num_steps=3):
     steps = [step.strip() for step in response.split('\n') if step.strip()]
     return steps
 
+def parse_mitigations(mitigations_text):
+    mitigations = [m.strip() for m in mitigations_text.split("::") if m.strip()]
+    return mitigations
+
+def get_cwe_potential_mitigations(cwe_id, cwe_dir):
+    potential_mitigations = []
+    cwe_file = os.path.join(cwe_dir, f"cwe_{cwe_id}.csv")
+    if os.path.exists(cwe_file):
+        with open(cwe_file, newline='', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                pm = row.get('Potential Mitigations', '')
+                if pm:
+                    potential_mitigations.extend([p.strip() for p in pm.split("::") if p.strip()])
+    return potential_mitigations
+
+def get_combined_cwe_potential_mitigations(cwe_ids, cwe_dir):
+    combined = []
+    for cwe_id in cwe_ids:
+        combined.extend(get_cwe_potential_mitigations(cwe_id, cwe_dir))
+    return combined
+
+def generate_countermeasures_for_attack_method(attack_method_text, mitigation_context):
+    instructions_countermeasure = (
+        "Generate ONE concise countermeasure using the following input while following these rules:\n"
+        "1. The countermeasure must start with a strong imperative verb (e.g., 'Implement', 'Deploy', 'Enforce')\n"
+        "2. Never use markdown, asterisks (**), bold, italics, or special formatting\n"
+        "3. Follow this exact format: '[action verb] [defense method] to [prevent impact]'\n"
+        "4. Do not include any implementation instructions, reasoning or additional information, just the countermeasure as a single sentence\n"
+        "Now generate ONLY the plain text countermeasure as a single sentence. Do NOT generate multiple countermeasures or anything beyond that single sentence."
+    )
+    combined_input = f"Attack Method: {attack_method_text}\nMitigation Context: {mitigation_context}"
+    response = callGPT(instructions_countermeasure, combined_input)
+    steps = [step.strip() for step in response.split('\n') if step.strip()]
+    return steps
+
 def callGPT(instructions, originalText):
     url = 'http://localhost:1234/v1/chat/completions'
     headers = {"Content-Type": "application/json"}
@@ -167,24 +203,47 @@ def process_capec_graph(capec_id, capec_dir, cwe_dir, current_path=None, duplica
             execution_flow_data = parse_execution_flow(row['Execution Flow'])
             objectives = [(objective, methods) for objective, methods in execution_flow_data]
             
+            mitigations_list = parse_mitigations(row.get('Mitigations', ''))
+            
+            cwe_ids = parse_related_cwe_ids(row.get('Related Weaknesses', ''))
+            combined_cwe_potential = get_combined_cwe_potential_mitigations(cwe_ids, cwe_dir)
+            context = "CAPEC mitigations: " + " ".join(mitigations_list)
+            if combined_cwe_potential:
+                context += " CWE potential mitigations: " + " ".join(combined_cwe_potential)
+            
             root_label = f"{row['Name']} (CAPEC-{capec_id})"
             if duplicates[capec_id] > 1:
                 root_label += " (duplicate)"
             root_node = GraphNode(root_label)
+            
+            for mitigation in mitigations_list:
+                root_node.children.append(GraphNode(f"Mitigation: {mitigation}"))
             
             if len(objectives) > 1:
                 and_node = GraphNode("AND", is_and=True)
                 for objective, methods in objectives:
                     objective_node = GraphNode(f"Attack Objective: {objective}")
                     for method in methods:
-                        objective_node.children.append(GraphNode(f"Attack Method: {method.actionableBody}"))
+                        attack_method_node = GraphNode(f"Attack Method: {method.actionableBody}")
+                        generated_countermeasures = generate_countermeasures_for_attack_method(
+                            method.originalBody, context
+                        )
+                        for cm in generated_countermeasures:
+                            attack_method_node.children.append(GraphNode(f"Generated Countermeasure: {cm}"))
+                        objective_node.children.append(attack_method_node)
                     and_node.children.append(objective_node)
                 root_node.children.append(and_node)
             elif objectives:
                 objective, methods = objectives[0]
                 objective_node = GraphNode(f"Attack Objective: {objective}")
                 for method in methods:
-                    objective_node.children.append(GraphNode(f"Attack Method: {method.actionableBody}"))
+                    attack_method_node = GraphNode(f"Attack Method: {method.actionableBody}")
+                    generated_countermeasures = generate_countermeasures_for_attack_method(
+                        method.originalBody, context
+                    )
+                    for cm in generated_countermeasures:
+                        attack_method_node.children.append(GraphNode(f"Generated Countermeasure: {cm}"))
+                    objective_node.children.append(attack_method_node)
                 root_node.children.append(objective_node)
             
             child_nodes = parse_related_patterns(row['Related Attack Patterns'], capec_dir)
@@ -195,12 +254,16 @@ def process_capec_graph(capec_id, capec_dir, cwe_dir, current_path=None, duplica
                     if child_graph is not None:
                         root_node.children.append(child_graph)
             
-            cwe_field = row.get('Related Weaknesses', '')
-            cwe_ids = parse_related_cwe_ids(cwe_field)
             if cwe_ids:
                 cwe_attack_steps = generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, num_steps=3)
                 for step in cwe_attack_steps:
-                    root_node.children.append(GraphNode(f"Generated Attack Method: {step}"))
+                    attack_method_node = GraphNode(f"Generated Attack Method: {step}")
+                    generated_countermeasures = generate_countermeasures_for_attack_method(
+                        step, context
+                    )
+                    for cm in generated_countermeasures:
+                        attack_method_node.children.append(GraphNode(f"Generated Countermeasure: {cm}"))
+                    root_node.children.append(attack_method_node)
             
             return root_node
     return None
@@ -302,6 +365,10 @@ def get_node_attributes(graph_node):
          return {"style": "filled", "fillcolor": "yellow"}
     elif label.startswith("Generated Attack Method:"):
          return {"style": "filled", "fillcolor": "orange"}
+    elif label.startswith("Mitigation:"):
+         return {"style": "filled", "fillcolor": "lightgreen"}
+    elif label.startswith("Generated Countermeasure:"):
+         return {"style": "filled", "fillcolor": "forestgreen"}
     else:
          return {"style": "filled", "fillcolor": "lightblue"}
 
@@ -331,7 +398,7 @@ def generate_attack_tree_graph():
     
     elaborated_tree = process_capec_graph(starting_capec_id, capec_dir, cwe_dir, duplicates=duplicates)
     if elaborated_tree is None:
-        print("No attack tree generated.")
+        print("No attack-defense tree generated.")
         return
     
     ancestry_chain = get_ancestry_chain(starting_capec_id, capec_dir)
@@ -340,7 +407,7 @@ def generate_attack_tree_graph():
     else:
         full_tree = elaborated_tree
     
-    dot = Digraph(comment="CAPEC Attack Tree")
+    dot = Digraph(comment="CAPEC Attack-Defense Tree")
     node_mapping = {}
     add_nodes_edges(dot, full_tree, node_mapping)
     
@@ -348,11 +415,13 @@ def generate_attack_tree_graph():
         c.attr(label='Node Types', style='dashed')
         legend_html = '<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4">'
         legend_html += '<TR><TD COLSPAN="2"><B>Color Codes</B></TD></TR>'
-        legend_html += '<TR><TD bgcolor="lightblue"> </TD><TD><b>Main Nodes:</b> Nodes representing a specific CAPEC entry with title and ID</TD></TR>'
-        legend_html += '<TR><TD bgcolor="red"> </TD><TD><b>Attack Objective Nodes:</b> Nodes representing the attack objectives taken directly from the parent CAPEC entry</TD></TR>'
-        legend_html += '<TR><TD bgcolor="yellow"> </TD><TD><b>Attack Method Nodes:</b> Nodes representing the attack methods taken directly from the parent CAPEC entry</TD></TR>'
-        legend_html += '<TR><TD bgcolor="orange"> </TD><TD><b>Generated Attack Method Nodes:</b> Nodes representing attack methods generated by a large language model (LLM) using data derived from the corresponding CWE entries linked to the parent CAPEC entry</TD></TR>'
-        legend_html += '<TR><TD bgcolor="gray80"> </TD><TD><b>Other Children Nodes:</b> Nodes representing childen that are not relevant to the original CAPEC entry and are not expended on</TD></TR>'
+        legend_html += '<TR><TD bgcolor="lightblue"> </TD><TD><b>Main Nodes:</b> CAPEC entries with title and ID</TD></TR>'
+        legend_html += '<TR><TD bgcolor="red"> </TD><TD><b>Attack Objective Nodes:</b> Derived from CAPEC execution flow</TD></TR>'
+        legend_html += '<TR><TD bgcolor="yellow"> </TD><TD><b>Attack Method Nodes:</b> Derived from execution flow</TD></TR>'
+        legend_html += '<TR><TD bgcolor="orange"> </TD><TD><b>Generated Attack Method Nodes:</b> LLM-generated attack methods</TD></TR>'
+        legend_html += '<TR><TD bgcolor="lightgreen"> </TD><TD><b>Mitigation Nodes:</b> Derived directly from the CAPEC mitigations</TD></TR>'
+        legend_html += '<TR><TD bgcolor="forestgreen"> </TD><TD><b>Generated Countermeasure Nodes:</b> LLM-generated countermeasures</TD></TR>'
+        legend_html += '<TR><TD bgcolor="gray80"> </TD><TD><b>Other Children Nodes:</b> Nodes representing non-expanded children</TD></TR>'
         legend_html += '</TABLE>>'
         c.node('legend', legend_html, shape='none')
     
@@ -372,7 +441,7 @@ def generate_attack_tree_graph():
         s.node('dummy_sink', '', style='invis')
         s.edge('dummy_sink', 'mapping', style='invis')
     
-    output_filename = 'attack_tree_graph'
+    output_filename = 'attack_defense_tree_graph'
     dot.render(output_filename, format='pdf', cleanup=True)
     print(f"Graph rendered to {output_filename}.pdf")
     
