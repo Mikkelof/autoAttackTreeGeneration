@@ -145,7 +145,7 @@ def generate_countermeasures_for_attack_method(attack_method_text, mitigation_co
         "1. The countermeasure must start with a strong imperative verb (e.g., 'Implement', 'Deploy', 'Enforce')\n"
         "2. Never use markdown, asterisks (**), bold, italics, or special formatting\n"
         "3. Follow this exact format: '[action verb] [defense method] to [prevent impact]'\n"
-        "4. Do not include any implementation instructions, reasoning or additional information, just the countermeasure as a single sentence\n"
+        "4. Do not include any implementation instructions, reasoning, drafts or additional information, just the countermeasure as a single sentence\n"
         "Now generate ONLY the plain text countermeasure as a single sentence. Do NOT generate multiple countermeasures or anything beyond that single sentence."
     )
     combined_input = f"Attack Method: {attack_method_text}\nMitigation Context: {mitigation_context}"
@@ -391,7 +391,7 @@ def add_nodes_edges(dot, graph_node, node_mapping, parent_id=None, mapping_count
         add_nodes_edges(dot, child, node_mapping, parent_id=current_id, mapping_counter=mapping_counter, and_counter=and_counter)
 
 def generate_attack_tree_graph():
-    starting_capec_id = "CAPEC-600"
+    starting_capec_id = "CAPEC-588"
     capec_dir = "./capec_data/"
     cwe_dir = "./cwe_data/"
     duplicates = defaultdict(int)
