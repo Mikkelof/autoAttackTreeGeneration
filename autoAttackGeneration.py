@@ -366,13 +366,13 @@ def get_node_attributes(graph_node):
     elif label.startswith("Generated Attack Method:"):
          return {"style": "filled", "fillcolor": "orange"}
     elif label.startswith("Mitigation:"):
-         return {"style": "filled", "fillcolor": "lightgreen"}
+         return {"style": "filled", "fillcolor": "lightgreen", "shape": "rectangle"}
     elif label.startswith("Generated Countermeasure:"):
-         return {"style": "filled", "fillcolor": "forestgreen"}
+         return {"style": "filled", "fillcolor": "forestgreen", "shape": "rectangle"}
     else:
          return {"style": "filled", "fillcolor": "lightblue"}
 
-def add_nodes_edges(dot, graph_node, node_mapping, parent_id=None, mapping_counter=[1], and_counter=[1]):
+def add_nodes_edges(dot, graph_node, node_mapping, parent_id=None, parent_label=None, mapping_counter=[1], and_counter=[1]):
     if graph_node.is_and:
         current_id = "and" + str(and_counter[0])
         and_counter[0] += 1
@@ -385,10 +385,13 @@ def add_nodes_edges(dot, graph_node, node_mapping, parent_id=None, mapping_count
 
     dot.node(current_id, node_label, **get_node_attributes(graph_node))
     if parent_id:
-        dot.edge(parent_id, current_id)
+        edge_style = {}
+        if graph_node.label.startswith("Mitigation:") or graph_node.label.startswith("Generated Countermeasure:"):
+            edge_style["style"] = "dotted"
+        dot.edge(parent_id, current_id, **edge_style)
     
     for child in graph_node.children:
-        add_nodes_edges(dot, child, node_mapping, parent_id=current_id, mapping_counter=mapping_counter, and_counter=and_counter)
+        add_nodes_edges(dot, child, node_mapping, parent_id=current_id, parent_label=graph_node.label, mapping_counter=mapping_counter, and_counter=and_counter)
 
 def generate_attack_tree_graph():
     starting_capec_id = "CAPEC-588"
