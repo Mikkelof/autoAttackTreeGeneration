@@ -50,17 +50,17 @@ def adjust_language_complexity(text, complexity):
     if complexity == 'non-technical':
         instructions = (
             "You must respond with only one sentence. Do not provide any additional text. "
-            "Rewrite this text as one simple, concise sentence starting with an action verb, using everyday language that anyone can understand, avoiding all technical terms and cybersecurity jargon."
+            "Rewrite the following text as one simple, concise sentence starting with an action verb, using everyday language that anyone can understand, avoiding all technical terms and cybersecurity jargon."
         )
     elif complexity == 'developer':
         instructions = (
             "You must respond with only one sentence. Do not provide any additional text. "
-            "Rewrite this text as one concise sentence starting with an action verb, using clear technical terms appropriate for software developers, keeping it short while maintaining accuracy."
+            "Rewrite the following text as one concise sentence starting with an action verb, using clear technical terms appropriate for software developers, keeping it short while maintaining accuracy."
         )
     elif complexity == 'expert':
         instructions = (
             "You must respond with only one sentence. Do not provide any additional text. "
-            "Rewrite this text as one concise sentence starting with an action verb, using precise cybersecurity terminology suitable for experts, keeping it short while maintaining accuracy."
+            "Rewrite the following text as one concise sentence starting with an action verb, using precise cybersecurity terminology suitable for experts, keeping it short while maintaining accuracy."
         )
     else:
         return text
@@ -541,4 +541,4 @@ def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax
 
 if __name__ == "__main__":
     # Options: language_complexity = [non-technical, developer, expert], syntax_complexity = [basic, countermeasures, full]
-    generate_attack_tree_graph(capec_id=588, language_complexity='non-technical', syntax_complexity='basic')
+    generate_attack_tree_graph(capec_id=588, language_complexity='expert', syntax_complexity='basic')
