@@ -6,6 +6,7 @@ import re
 import html
 from collections import defaultdict
 from graphviz import Digraph
+import math
 
 class Node:
     def __init__(self, originalBody="", actionableBody=""):
@@ -18,6 +19,32 @@ class GraphNode:
         self.dimmed = dimmed
         self.children = []
         self.is_and = is_and
+
+    def word_count(self):
+        if "(CAPEC-" in self.label:
+            return 0
+        prefixes = ["Attack Objective: ", "Attack Method: ", "Generated Attack Method: ", "Mitigation: ", "Generated Countermeasure: "]
+        for prefix in prefixes:
+            if self.label.startswith(prefix):
+                text = self.label[len(prefix):].strip()
+                words = text.split()
+                return len(words)
+        return 0
+
+def count_nodes_excluding_and(node):
+    if node.is_and:
+        count = 0
+    else:
+        count = 1
+    for child in node.children:
+        count += count_nodes_excluding_and(child)
+    return count
+
+def total_word_count(node):
+    count = node.word_count()
+    for child in node.children:
+        count += total_word_count(child)
+    return count
 
 def adjust_language_complexity(text, complexity):
     if complexity == 'non-technical':
@@ -459,6 +486,16 @@ def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax
     else:
         full_tree = elaborated_tree
     
+    total_nodes = count_nodes_excluding_and(full_tree)
+    syntax_complexity_number = 1 - math.exp(-0.02 * total_nodes)
+    
+    # Calculate and print the total word count
+    total_words = total_word_count(full_tree)
+    print(f"\nStatistics:")
+    print(f"Total number of words in the nodes: {total_words}")
+    print(f"Total number of nodes (excluding AND-nodes): {total_nodes}")
+    print(f"Syntax complexity: {syntax_complexity_number:.4f}")
+    
     dot = Digraph(comment="CAPEC Attack-Defense Tree")
     node_mapping = {}
     add_nodes_edges(dot, full_tree, node_mapping)
@@ -504,4 +541,4 @@ def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax
 
 if __name__ == "__main__":
     # Options: language_complexity = [non-technical, developer, expert], syntax_complexity = [basic, countermeasures, full]
-    generate_attack_tree_graph(capec_id=600, language_complexity='expert', syntax_complexity='full')
+    generate_attack_tree_graph(capec_id=588, language_complexity='non-technical', syntax_complexity='basic')
