@@ -19,12 +19,28 @@ class GraphNode:
         self.children = []
         self.is_and = is_and
 
-def parse_execution_flow(execution_flow):
-    instructionsSummarize = (
-        "Rewrite the text as one concise, actionable sentence. Do not include any bullet points, numbered steps, markdown, or extra information — only a single sentence. "
-        "You should NOT add anything, such as further instructions or additional information, to the text."
-    )
+def adjust_language_complexity(text, complexity):
+    if complexity == 'non-technical':
+        instructions = (
+            "You must respond with only one sentence. Do not provide any additional text. "
+            "Rewrite this text as one simple, concise sentence starting with an action verb, using everyday language that anyone can understand, avoiding all technical terms and cybersecurity jargon."
+        )
+    elif complexity == 'developer':
+        instructions = (
+            "You must respond with only one sentence. Do not provide any additional text. "
+            "Rewrite this text as one concise sentence starting with an action verb, using clear technical terms appropriate for software developers, keeping it short while maintaining accuracy."
+        )
+    elif complexity == 'expert':
+        instructions = (
+            "You must respond with only one sentence. Do not provide any additional text. "
+            "Rewrite this text as one concise sentence starting with an action verb, using precise cybersecurity terminology suitable for experts, keeping it short while maintaining accuracy."
+        )
+    else:
+        return text
     
+    return callGPT(instructions, text, complexity)
+
+def parse_execution_flow(execution_flow, language_complexity):
     steps = execution_flow.split('::STEP:')[1:]
     objectives = []
     
@@ -49,7 +65,7 @@ def parse_execution_flow(execution_flow):
         for tech in technique_parts:
             method = tech.split('::', 1)[0].strip()
             if method:
-                actionable_method = callGPT(instructionsSummarize, method)
+                actionable_method = adjust_language_complexity(method, language_complexity)
                 methods.append(Node(method, actionable_method))
         
         objectives.append((objective, methods))
@@ -82,7 +98,7 @@ def include_capec(capec_id, capec_dir):
 def parse_related_cwe_ids(related_cwe_text):
     return re.findall(r'::(\d+)::', related_cwe_text)
 
-def generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, num_steps=3):
+def generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, language_complexity, num_steps=3):
     all_cwe_info = ""
     for cwe_id in cwe_ids:
         cwe_file = os.path.join(cwe_dir, f"cwe_{cwe_id}.csv")
@@ -100,7 +116,7 @@ def generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, num_steps=3):
     if not all_cwe_info:
         return []
     
-    instructions_cwe = (
+    base_prompt = (
         f"Generate {num_steps} concise attack steps following these rules:\n"
         "1. Each step MUST start with a strong imperative verb (for example, but not limited to 'Intercept', 'Bypass' or 'Brute-force')\n"
         "2. Never use markdown, asterisks (**), bold, italics, or special formatting\n"
@@ -109,17 +125,26 @@ def generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, num_steps=3):
         "5. Do NOT start with 'Step 1:' or '1.' or any numbering, skip directly to the verb\n"
         "6. Use complete sentences but keep under 15 words\n\n"
         "Bad Example: **Step 1:** Intercept CAPTCHA mechanisms by...\n"
-        "Good Example: Exploit weak password requirements to bypass authentication mechanisms\n\n"
-        "Now generate plain text steps following these rules."
+        "Good Example: Exploit weak password requirements to bypass authentication mechanisms\n"
     )
-        
-    response = callGPT(instructions_cwe, all_cwe_info)
+    
+    if language_complexity == 'non-technical':
+        language_instruction = "Use simple, everyday language without technical terms."
+    elif language_complexity == 'developer':
+        language_instruction = "Use technical terms appropriate for software developers."
+    elif language_complexity == 'expert':
+        language_instruction = "Use precise cybersecurity terminology suitable for experts."
+    else:
+        language_instruction = ""
+    
+    instructions_cwe = base_prompt + language_instruction + "\nNow generate plain text steps following these rules."
+    
+    response = callGPT(instructions_cwe, all_cwe_info, language_complexity)
     steps = [step.strip() for step in response.split('\n') if step.strip()]
     return steps
 
 def parse_mitigations(mitigations_text):
-    mitigations = [m.strip() for m in mitigations_text.split("::") if m.strip()]
-    return mitigations
+    return [m.strip() for m in mitigations_text.split("::") if m.strip()]
 
 def get_cwe_potential_mitigations(cwe_id, cwe_dir):
     potential_mitigations = []
@@ -139,21 +164,32 @@ def get_combined_cwe_potential_mitigations(cwe_ids, cwe_dir):
         combined.extend(get_cwe_potential_mitigations(cwe_id, cwe_dir))
     return combined
 
-def generate_countermeasures_for_attack_method(attack_method_text, mitigation_context):
-    instructions_countermeasure = (
+def generate_countermeasures_for_attack_method(attack_method_text, mitigation_context, language_complexity):
+    base_prompt = (
         "Generate ONE concise countermeasure using the following input while following these rules:\n"
         "1. The countermeasure must start with a strong imperative verb (e.g., 'Implement', 'Deploy', 'Enforce')\n"
         "2. Never use markdown, asterisks (**), bold, italics, or special formatting\n"
         "3. Follow this exact format: '[action verb] [defense method] to [prevent impact]'\n"
         "4. Do not include any implementation instructions, reasoning, drafts or additional information, just the countermeasure as a single sentence\n"
-        "Now generate ONLY the plain text countermeasure as a single sentence. Do NOT generate multiple countermeasures or anything beyond that single sentence."
     )
+    
+    if language_complexity == 'non-technical':
+        language_instruction = "Use simple, everyday language without technical terms."
+    elif language_complexity == 'developer':
+        language_instruction = "Use technical terms appropriate for software developers."
+    elif language_complexity == 'expert':
+        language_instruction = "Use precise cybersecurity terminology suitable for experts."
+    else:
+        language_instruction = ""
+    
+    instructions_countermeasure = base_prompt + language_instruction + "\nNow generate ONLY the plain text countermeasure as a single sentence. Do NOT generate multiple countermeasures or anything beyond that single sentence."
+    
     combined_input = f"Attack Method: {attack_method_text}\nMitigation Context: {mitigation_context}"
-    response = callGPT(instructions_countermeasure, combined_input)
+    response = callGPT(instructions_countermeasure, combined_input, language_complexity)
     steps = [step.strip() for step in response.split('\n') if step.strip()]
     return steps
 
-def callGPT(instructions, originalText):
+def callGPT(instructions, originalText, complexity_level):
     url = 'http://localhost:1234/v1/chat/completions'
     headers = {"Content-Type": "application/json"}
     data = {
@@ -178,7 +214,7 @@ def callGPT(instructions, originalText):
         print(f"Error: {response.status_code}, {response.text}")
         return ""
 
-def process_capec_graph(capec_id, capec_dir, cwe_dir, current_path=None, duplicates=None):
+def process_capec_graph(capec_id, capec_dir, cwe_dir, current_path=None, duplicates=None, language_complexity='developer', syntax_complexity='full'):
     if current_path is None:
         current_path = []
     if duplicates is None:
@@ -200,14 +236,15 @@ def process_capec_graph(capec_id, capec_dir, cwe_dir, current_path=None, duplica
     with open(capec_file, newline='', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
-            execution_flow_data = parse_execution_flow(row['Execution Flow'])
+            execution_flow_data = parse_execution_flow(row['Execution Flow'], language_complexity)
             objectives = [(objective, methods) for objective, methods in execution_flow_data]
             
             mitigations_list = parse_mitigations(row.get('Mitigations', ''))
+            adjusted_mitigations = [adjust_language_complexity(m, language_complexity) for m in mitigations_list]
             
             cwe_ids = parse_related_cwe_ids(row.get('Related Weaknesses', ''))
             combined_cwe_potential = get_combined_cwe_potential_mitigations(cwe_ids, cwe_dir)
-            context = "CAPEC mitigations: " + " ".join(mitigations_list)
+            context = "CAPEC mitigations: " + " ".join(adjusted_mitigations)
             if combined_cwe_potential:
                 context += " CWE potential mitigations: " + " ".join(combined_cwe_potential)
             
@@ -216,33 +253,39 @@ def process_capec_graph(capec_id, capec_dir, cwe_dir, current_path=None, duplica
                 root_label += " (duplicate)"
             root_node = GraphNode(root_label)
             
-            for mitigation in mitigations_list:
+            for mitigation in adjusted_mitigations:
                 root_node.children.append(GraphNode(f"Mitigation: {mitigation}"))
             
             if len(objectives) > 1:
                 and_node = GraphNode("AND", is_and=True)
                 for objective, methods in objectives:
-                    objective_node = GraphNode(f"Attack Objective: {objective}")
+                    objective_text = adjust_language_complexity(objective, language_complexity)
+                    objective_node = GraphNode(f"Attack Objective: {objective_text}")
                     for method in methods:
-                        attack_method_node = GraphNode(f"Attack Method: {method.actionableBody}")
-                        generated_countermeasures = generate_countermeasures_for_attack_method(
-                            method.originalBody, context
-                        )
-                        for cm in generated_countermeasures:
-                            attack_method_node.children.append(GraphNode(f"Generated Countermeasure: {cm}"))
+                        attack_label = f"Attack Method: {method.actionableBody}"
+                        attack_method_node = GraphNode(attack_label)
+                        if syntax_complexity in ['countermeasures', 'full']:
+                            generated_countermeasures = generate_countermeasures_for_attack_method(
+                                method.originalBody, context, language_complexity
+                            )
+                            for cm in generated_countermeasures:
+                                attack_method_node.children.append(GraphNode(f"Generated Countermeasure: {cm}"))
                         objective_node.children.append(attack_method_node)
                     and_node.children.append(objective_node)
                 root_node.children.append(and_node)
             elif objectives:
                 objective, methods = objectives[0]
-                objective_node = GraphNode(f"Attack Objective: {objective}")
+                objective_text = adjust_language_complexity(objective, language_complexity)
+                objective_node = GraphNode(f"Attack Objective: {objective_text}")
                 for method in methods:
-                    attack_method_node = GraphNode(f"Attack Method: {method.actionableBody}")
-                    generated_countermeasures = generate_countermeasures_for_attack_method(
-                        method.originalBody, context
-                    )
-                    for cm in generated_countermeasures:
-                        attack_method_node.children.append(GraphNode(f"Generated Countermeasure: {cm}"))
+                    attack_label = f"Attack Method: {method.actionableBody}"
+                    attack_method_node = GraphNode(attack_label)
+                    if syntax_complexity in ['countermeasures', 'full']:
+                        generated_countermeasures = generate_countermeasures_for_attack_method(
+                            method.originalBody, context, language_complexity
+                        )
+                        for cm in generated_countermeasures:
+                            attack_method_node.children.append(GraphNode(f"Generated Countermeasure: {cm}"))
                     objective_node.children.append(attack_method_node)
                 root_node.children.append(objective_node)
             
@@ -250,19 +293,22 @@ def process_capec_graph(capec_id, capec_dir, cwe_dir, current_path=None, duplica
             if child_nodes:
                 for child in child_nodes:
                     child_id = child.split('-')[1]
-                    child_graph = process_capec_graph(child_id, capec_dir, cwe_dir, current_path + [capec_id], duplicates)
+                    child_graph = process_capec_graph(child_id, capec_dir, cwe_dir, 
+                                                     current_path + [capec_id], duplicates,
+                                                     language_complexity, syntax_complexity)
                     if child_graph is not None:
                         root_node.children.append(child_graph)
             
-            if cwe_ids:
-                cwe_attack_steps = generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, num_steps=3)
+            if syntax_complexity == 'full' and cwe_ids:
+                cwe_attack_steps = generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, language_complexity)
                 for step in cwe_attack_steps:
                     attack_method_node = GraphNode(f"Generated Attack Method: {step}")
-                    generated_countermeasures = generate_countermeasures_for_attack_method(
-                        step, context
-                    )
-                    for cm in generated_countermeasures:
-                        attack_method_node.children.append(GraphNode(f"Generated Countermeasure: {cm}"))
+                    if syntax_complexity == 'full':
+                        generated_countermeasures = generate_countermeasures_for_attack_method(
+                            step, context, language_complexity
+                        )
+                        for cm in generated_countermeasures:
+                            attack_method_node.children.append(GraphNode(f"Generated Countermeasure: {cm}"))
                     root_node.children.append(attack_method_node)
             
             return root_node
@@ -393,13 +439,16 @@ def add_nodes_edges(dot, graph_node, node_mapping, parent_id=None, parent_label=
     for child in graph_node.children:
         add_nodes_edges(dot, child, node_mapping, parent_id=current_id, parent_label=graph_node.label, mapping_counter=mapping_counter, and_counter=and_counter)
 
-def generate_attack_tree_graph():
-    starting_capec_id = "CAPEC-588"
+def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax_complexity='full'):
+    starting_capec_id = f"CAPEC-{capec_id}"
     capec_dir = "./capec_data/"
     cwe_dir = "./cwe_data/"
     duplicates = defaultdict(int)
     
-    elaborated_tree = process_capec_graph(starting_capec_id, capec_dir, cwe_dir, duplicates=duplicates)
+    elaborated_tree = process_capec_graph(starting_capec_id, capec_dir, cwe_dir, 
+                                        duplicates=duplicates, 
+                                        language_complexity=language_complexity,
+                                        syntax_complexity=syntax_complexity)
     if elaborated_tree is None:
         print("No attack-defense tree generated.")
         return
@@ -444,7 +493,7 @@ def generate_attack_tree_graph():
         s.node('dummy_sink', '', style='invis')
         s.edge('dummy_sink', 'mapping', style='invis')
     
-    output_filename = 'attack_defense_tree_graph'
+    output_filename = f'attack_defense_tree_{language_complexity}_{syntax_complexity}'
     dot.render(output_filename, format='pdf', cleanup=True)
     print(f"Graph rendered to {output_filename}.pdf")
     
@@ -454,4 +503,5 @@ def generate_attack_tree_graph():
             print(f"- CAPEC-{cid} appears {count} times in the tree")
 
 if __name__ == "__main__":
-    generate_attack_tree_graph()
+    # Options: language_complexity = [non-technical, developer, expert], syntax_complexity = [basic, countermeasures, full]
+    generate_attack_tree_graph(capec_id=600, language_complexity='expert', syntax_complexity='full')

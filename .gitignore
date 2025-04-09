@@ -2,3 +2,12 @@ autoAttackTree
 .DS_Store
 attack_tree_graph.pdf
 attack_defense_tree_graph.pdf
+attack_defense_tree_developer_basic.pdf
+attack_defense_tree_developer_countermeasures.pdf
+attack_defense_tree_developer_full.pdf
+attack_defense_tree_expert_basic.pdf
+attack_defense_tree_expert_countermeasures.pdf
+attack_defense_tree_expert_full.pdf
+attack_defense_tree_non-technical_basic.pdf
+attack_defense_tree_non-technical_countermeasures.pdf
+attack_defense_tree_non-technical_full.pdf
