@@ -40,27 +40,66 @@ def count_nodes_excluding_and(node):
         count += count_nodes_excluding_and(child)
     return count
 
-def total_word_count(node):
-    count = node.word_count()
+def load_glossary(glossary_file):
+    with open(glossary_file, 'r', encoding='utf-8-sig') as f:
+        data = json.load(f)
+    terms = [entry['term'].lower() for entry in data['parentTerms']]
+    return terms
+
+def count_matches(text, glossary_terms):
+    text_lower = text.lower()
+    words = text_lower.split()
+    matched_positions = set()
+    for term in glossary_terms:
+        term_words = term.split()
+        term_length = len(term_words)
+        for i in range(len(words) - term_length + 1):
+            if words[i:i + term_length] == term_words:
+                for j in range(i, i + term_length):
+                    matched_positions.add(j)
+    return len(matched_positions)
+
+def total_word_and_match_count(node, glossary_terms):
+    if node.is_and:
+        word_count = 0
+        match_count = 0
+    else:
+        prefixes = ["Attack Objective: ", "Attack Method: ", "Generated Attack Method: ", "Mitigation: ", "Generated Countermeasure: "]
+        for prefix in prefixes:
+            if node.label.startswith(prefix):
+                text = node.label[len(prefix):].strip()
+                words = text.split()
+                word_count = len(words)
+                match_count = count_matches(text, glossary_terms)
+                break
+        else:
+            word_count = 0
+            match_count = 0
     for child in node.children:
-        count += total_word_count(child)
-    return count
+        child_word_count, child_match_count = total_word_and_match_count(child, glossary_terms)
+        word_count += child_word_count
+        match_count += child_match_count
+    return word_count, match_count
 
 def adjust_language_complexity(text, complexity):
     if complexity == 'non-technical':
         instructions = (
-            "You must respond with only one sentence. Do not provide any additional text. "
-            "Rewrite the following text as one simple, concise sentence starting with an action verb, using everyday language that anyone can understand, avoiding all technical terms and cybersecurity jargon."
+            "You MUST respond with only one sentence. Provide NO additional text or explanation whatsoever.\n"
+            "Rewrite the following text as one extremely simple, short sentence starting with an action verb (like 'Use', 'Find', 'Stop').\n"
+            "Use only common, everyday words suitable for someone with ZERO technical knowledge. \n"
+            "AVOID ALL technical terms, cybersecurity jargon, acronyms, or complex concepts. Focus on the basic action or prevention."
         )
     elif complexity == 'developer':
         instructions = (
-            "You must respond with only one sentence. Do not provide any additional text. "
-            "Rewrite the following text as one concise sentence starting with an action verb, using clear technical terms appropriate for software developers, keeping it short while maintaining accuracy."
+            "You MUST respond with only one sentence. Provide NO additional text or explanation whatsoever.\n"
+            "Rewrite the following text as one concise sentence starting with an action verb (like 'Implement', 'Validate', 'Query', 'Configure').\n"
+            "Use clear technical terms appropriate for software developers, focusing on code, APIs, data handling, configuration, or common libraries/frameworks. Maintain technical accuracy but keep it brief."
         )
     elif complexity == 'expert':
         instructions = (
-            "You must respond with only one sentence. Do not provide any additional text. "
-            "Rewrite the following text as one concise sentence starting with an action verb, using precise cybersecurity terminology suitable for experts, keeping it short while maintaining accuracy."
+            "You MUST respond with only one sentence. Provide NO additional text or explanation whatsoever.\n"
+            "Rewrite the following text as one concise sentence starting with a strong action verb (like 'Exploit', 'Inject', 'Enforce', 'Harden').\n"
+            "Use precise, specific cybersecurity terminology (e.g., mention specific vulnerability classes like 'SQL Injection', 'Cross-Site Scripting', protocols, or advanced techniques) suitable for security professionals. Prioritize technical accuracy and specificity."
         )
     else:
         return text
@@ -156,11 +195,20 @@ def generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, language_complexity, num
     )
     
     if language_complexity == 'non-technical':
-        language_instruction = "Use simple, everyday language without technical terms."
+        language_instruction = (
+            "Use EXTREMELY simple, everyday language. AVOID ALL technical terms, jargon, or acronyms. "
+            "Focus only on the core action in plain English understandable by a complete novice."
+        )
     elif language_complexity == 'developer':
-        language_instruction = "Use technical terms appropriate for software developers."
+        language_instruction = (
+            "Use technical terms relevant to software developers (e.g., input validation, API calls, database interactions, session management, configuration errors). "
+            "Focus on actions related to code, data, or system configuration."
+        )
     elif language_complexity == 'expert':
-        language_instruction = "Use precise cybersecurity terminology suitable for experts."
+        language_instruction = (
+            "Use precise and specific cybersecurity terminology. Mention specific attack types (e.g., SQLi, XSS, RCE), "
+            "advanced techniques, or protocol manipulation where applicable. Assume deep technical knowledge."
+        )
     else:
         language_instruction = ""
     
@@ -201,11 +249,20 @@ def generate_countermeasures_for_attack_method(attack_method_text, mitigation_co
     )
     
     if language_complexity == 'non-technical':
-        language_instruction = "Use simple, everyday language without technical terms."
+        language_instruction = (
+            "Use EXTREMELY simple, everyday language. AVOID ALL technical terms, jargon, or acronyms. "
+            "Focus on the basic preventative action in plain English understandable by anyone."
+        )
     elif language_complexity == 'developer':
-        language_instruction = "Use technical terms appropriate for software developers."
+        language_instruction = (
+            "Use technical terms relevant to software developers (e.g., input sanitization, output encoding, parameterization, secure coding practices, API rate limiting, proper configuration). "
+            "Focus on practical implementation steps."
+        )
     elif language_complexity == 'expert':
-        language_instruction = "Use precise cybersecurity terminology suitable for experts."
+        language_instruction = (
+            "Use precise and specific cybersecurity terminology. Mention specific security controls (e.g., WAF rules, CSP directives, HSTS), "
+            "architectural patterns, cryptographic techniques, or advanced configurations. Assume deep technical knowledge."
+        )
     else:
         language_instruction = ""
     
@@ -470,7 +527,10 @@ def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax
     starting_capec_id = f"CAPEC-{capec_id}"
     capec_dir = "./capec_data/"
     cwe_dir = "./cwe_data/"
+    glossary_file = "nist_glossary.json"
     duplicates = defaultdict(int)
+    
+    glossary_terms = load_glossary(glossary_file)
     
     elaborated_tree = process_capec_graph(starting_capec_id, capec_dir, cwe_dir, 
                                         duplicates=duplicates, 
@@ -489,12 +549,17 @@ def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax
     total_nodes = count_nodes_excluding_and(full_tree)
     syntax_complexity_number = 1 - math.exp(-0.02 * total_nodes)
     
-    # Calculate and print the total word count
-    total_words = total_word_count(full_tree)
+    total_words, total_matches = total_word_and_match_count(full_tree, glossary_terms)
+    language_complexity_score = total_matches / total_words if total_words > 0 else 0
+    
     print(f"\nStatistics:")
     print(f"Total number of words in the nodes: {total_words}")
+    print(f"Total number of matches with glossary terms: {total_matches}")
+    print(f"Language complexity: {language_complexity_score:.4f}")
     print(f"Total number of nodes (excluding AND-nodes): {total_nodes}")
     print(f"Syntax complexity: {syntax_complexity_number:.4f}")
+    print(f"Total complexity: {(language_complexity_score*syntax_complexity_number):.4f}")
+
     
     dot = Digraph(comment="CAPEC Attack-Defense Tree")
     node_mapping = {}
@@ -541,4 +606,12 @@ def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax
 
 if __name__ == "__main__":
     # Options: language_complexity = [non-technical, developer, expert], syntax_complexity = [basic, countermeasures, full]
+    generate_attack_tree_graph(capec_id=588, language_complexity='non-technical', syntax_complexity='basic')
+    generate_attack_tree_graph(capec_id=588, language_complexity='developer', syntax_complexity='basic')
     generate_attack_tree_graph(capec_id=588, language_complexity='expert', syntax_complexity='basic')
+    generate_attack_tree_graph(capec_id=588, language_complexity='non-technical', syntax_complexity='countermeasures')
+    generate_attack_tree_graph(capec_id=588, language_complexity='developer', syntax_complexity='countermeasures')
+    generate_attack_tree_graph(capec_id=588, language_complexity='expert', syntax_complexity='countermeasures')
+    generate_attack_tree_graph(capec_id=588, language_complexity='non-technical', syntax_complexity='full')
+    generate_attack_tree_graph(capec_id=588, language_complexity='developer', syntax_complexity='full')
+    generate_attack_tree_graph(capec_id=588, language_complexity='expert', syntax_complexity='full')
