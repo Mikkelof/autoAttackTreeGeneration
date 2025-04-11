@@ -573,7 +573,7 @@ def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax
         legend_html += '<TR><TD bgcolor="red"> </TD><TD><b>Attack Objective Nodes:</b> Derived from CAPEC execution flow</TD></TR>'
         legend_html += '<TR><TD bgcolor="yellow"> </TD><TD><b>Attack Method Nodes:</b> Derived from execution flow</TD></TR>'
         legend_html += '<TR><TD bgcolor="orange"> </TD><TD><b>Generated Attack Method Nodes:</b> LLM-generated attack methods</TD></TR>'
-        legend_html += '<TR><TD bgcolor="lightgreen"> </TD><TD><b>Mitigation Nodes:</b> Derived directly from the CAPEC mitigations</TD></TR>'
+        legend_html += '<TR><TD bgcolor="lightgreen"> </TD><TD><b>Mitigation Nodes:</b> Derived from the CAPEC mitigations</TD></TR>'
         legend_html += '<TR><TD bgcolor="forestgreen"> </TD><TD><b>Generated Countermeasure Nodes:</b> LLM-generated countermeasures</TD></TR>'
         legend_html += '<TR><TD bgcolor="gray80"> </TD><TD><b>Other Children Nodes:</b> Nodes representing non-expanded children</TD></TR>'
         legend_html += '</TABLE>>'
