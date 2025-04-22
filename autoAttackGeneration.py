@@ -189,7 +189,7 @@ def generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, language_complexity, num
         "3. Follow this exact format: '[action verb] [method] to [impact]'\n"
         "4. Never mention 'attackers can' - focus on direct actions\n"
         "5. Do NOT start with 'Step 1:' or '1.' or any numbering, skip directly to the verb\n"
-        "6. Use complete sentences but keep under 15 words\n\n"
+        "6. Use complete sentences but keep it under 15 words\n\n"
         "Bad Example: **Step 1:** Intercept CAPTCHA mechanisms by...\n"
         "Good Example: Exploit weak password requirements to bypass authentication mechanisms\n"
     )
