@@ -606,12 +606,12 @@ def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax
 
 if __name__ == "__main__":
     # Options: language_complexity = [non-technical, developer, expert], syntax_complexity = [basic, countermeasures, full]
-    generate_attack_tree_graph(capec_id=588, language_complexity='non-technical', syntax_complexity='basic')
-    generate_attack_tree_graph(capec_id=588, language_complexity='developer', syntax_complexity='basic')
-    generate_attack_tree_graph(capec_id=588, language_complexity='expert', syntax_complexity='basic')
-    generate_attack_tree_graph(capec_id=588, language_complexity='non-technical', syntax_complexity='countermeasures')
-    generate_attack_tree_graph(capec_id=588, language_complexity='developer', syntax_complexity='countermeasures')
-    generate_attack_tree_graph(capec_id=588, language_complexity='expert', syntax_complexity='countermeasures')
-    generate_attack_tree_graph(capec_id=588, language_complexity='non-technical', syntax_complexity='full')
+    # generate_attack_tree_graph(capec_id=588, language_complexity='non-technical', syntax_complexity='basic')
+    # generate_attack_tree_graph(capec_id=588, language_complexity='developer', syntax_complexity='basic')
+    # generate_attack_tree_graph(capec_id=588, language_complexity='expert', syntax_complexity='basic')
+    # generate_attack_tree_graph(capec_id=588, language_complexity='non-technical', syntax_complexity='countermeasures')
+    # generate_attack_tree_graph(capec_id=588, language_complexity='developer', syntax_complexity='countermeasures')
+    # generate_attack_tree_graph(capec_id=588, language_complexity='expert', syntax_complexity='countermeasures')
+    # generate_attack_tree_graph(capec_id=588, language_complexity='non-technical', syntax_complexity='full')
     generate_attack_tree_graph(capec_id=588, language_complexity='developer', syntax_complexity='full')
-    generate_attack_tree_graph(capec_id=588, language_complexity='expert', syntax_complexity='full')
+    # generate_attack_tree_graph(capec_id=588, language_complexity='expert', syntax_complexity='full')
