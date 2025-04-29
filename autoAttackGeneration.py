@@ -7,6 +7,7 @@ import html
 from collections import defaultdict
 from graphviz import Digraph
 import math
+import pandas as pd
 
 class Node:
     def __init__(self, originalBody="", actionableBody=""):
@@ -523,7 +524,7 @@ def add_nodes_edges(dot, graph_node, node_mapping, parent_id=None, parent_label=
     for child in graph_node.children:
         add_nodes_edges(dot, child, node_mapping, parent_id=current_id, parent_label=graph_node.label, mapping_counter=mapping_counter, and_counter=and_counter)
 
-def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax_complexity='full'):
+def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax_complexity='full', render=True, verbose=True):
     starting_capec_id = f"CAPEC-{capec_id}"
     capec_dir = "./capec_data/"
     cwe_dir = "./cwe_data/"
@@ -537,8 +538,9 @@ def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax
                                         language_complexity=language_complexity,
                                         syntax_complexity=syntax_complexity)
     if elaborated_tree is None:
-        print("No attack-defense tree generated.")
-        return
+        if verbose:
+            print("No attack-defense tree generated.")
+        return None
     
     ancestry_chain = get_ancestry_chain(starting_capec_id, capec_dir)
     if len(ancestry_chain) > 1:
@@ -547,71 +549,113 @@ def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax
         full_tree = elaborated_tree
     
     total_nodes = count_nodes_excluding_and(full_tree)
-    syntax_complexity_number = 1 - math.exp(-0.02 * total_nodes)
+    syntax_complexity_number = max(0, min(1, (total_nodes - 5) / 155.0))
     
     total_words, total_matches = total_word_and_match_count(full_tree, glossary_terms)
     language_complexity_score = total_matches / total_words if total_words > 0 else 0
+    total_complexity = (language_complexity_score + syntax_complexity_number)/2
     
-    print(f"\nStatistics:")
-    print(f"Total number of words in the nodes: {total_words}")
-    print(f"Total number of matches with glossary terms: {total_matches}")
-    print(f"Language complexity: {language_complexity_score:.4f}")
-    print(f"Total number of nodes (excluding AND-nodes): {total_nodes}")
-    print(f"Syntax complexity: {syntax_complexity_number:.4f}")
-    print(f"Total complexity: {(language_complexity_score*syntax_complexity_number):.4f}")
-
+    if verbose:
+        print(f"\nStatistics for CAPEC-{capec_id} with {language_complexity} and {syntax_complexity}:")
+        print(f"Total number of words in the nodes: {total_words}")
+        print(f"Total number of matches with glossary terms: {total_matches}")
+        print(f"Language complexity: {language_complexity_score:.4f}")
+        print(f"Total number of nodes (excluding AND-nodes): {total_nodes}")
+        print(f"Syntax complexity: {syntax_complexity_number:.4f}")
+        print(f"Total complexity: {total_complexity:.4f}")
     
-    dot = Digraph(comment="CAPEC Attack-Defense Tree")
-    node_mapping = {}
-    add_nodes_edges(dot, full_tree, node_mapping)
+    if render:
+        dot = Digraph(comment="CAPEC Attack-Defense Tree")
+        node_mapping = {}
+        add_nodes_edges(dot, full_tree, node_mapping)
+        
+        with dot.subgraph(name='cluster_legend') as c:
+            c.attr(label='Node Types', style='dashed')
+            legend_html = '<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4">'
+            legend_html += '<TR><TD COLSPAN="2"><B>Color Codes</B></TD></TR>'
+            legend_html += '<TR><TD bgcolor="lightblue"> </TD><TD><b>Main Nodes:</b> CAPEC entries with title and ID</TD></TR>'
+            legend_html += '<TR><TD bgcolor="red"> </TD><TD><b>Attack Objective Nodes:</b> Derived from CAPEC execution flow</TD></TR>'
+            legend_html += '<TR><TD bgcolor="yellow"> </TD><TD><b>Attack Method Nodes:</b> Derived from execution flow</TD></TR>'
+            legend_html += '<TR><TD bgcolor="orange"> </TD><TD><b>Generated Attack Method Nodes:</b> LLM-generated attack methods</TD></TR>'
+            legend_html += '<TR><TD bgcolor="lightgreen"> </TD><TD><b>Mitigation Nodes:</b> Derived from the CAPEC mitigations</TD></TR>'
+            legend_html += '<TR><TD bgcolor="forestgreen"> </TD><TD><b>Generated Countermeasure Nodes:</b> LLM-generated countermeasures</TD></TR>'
+            legend_html += '<TR><TD bgcolor="gray80"> </TD><TD><b>Other Children Nodes:</b> Nodes representing non-expanded children</TD></TR>'
+            legend_html += '</TABLE>>'
+            c.node('legend', legend_html, shape='none')
+        
+        mapping_html = '<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4">'
+        mapping_html += '<TR><TD COLSPAN="2"><B>Node Mapping</B></TD></TR>'
+        for key in sorted(node_mapping.keys(), key=lambda x: int(x.replace("node", ""))):
+            mapping_text = html.escape(node_mapping[key])
+            mapping_html += f'<TR><TD>{key}</TD><TD>{mapping_text}</TD></TR>'
+        mapping_html += '</TABLE>>'
+        
+        with dot.subgraph(name='cluster_mapping') as c2:
+            c2.attr(rank='sink', label='Node Mappings', style='dashed')
+            c2.node('mapping', mapping_html, shape='none')
+        
+        with dot.subgraph(name='sink_cluster') as s:
+            s.attr(rank='sink')
+            s.node('dummy_sink', '', style='invis')
+            s.edge('dummy_sink', 'mapping', style='invis')
+        
+        output_filename = f'attack_defense_tree_{language_complexity}_{syntax_complexity}_{capec_id}'
+        dot.render(output_filename, format='pdf', cleanup=True)
+        if verbose:
+            print(f"Graph rendered to {output_filename}.pdf")
     
-    with dot.subgraph(name='cluster_legend') as c:
-        c.attr(label='Node Types', style='dashed')
-        legend_html = '<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4">'
-        legend_html += '<TR><TD COLSPAN="2"><B>Color Codes</B></TD></TR>'
-        legend_html += '<TR><TD bgcolor="lightblue"> </TD><TD><b>Main Nodes:</b> CAPEC entries with title and ID</TD></TR>'
-        legend_html += '<TR><TD bgcolor="red"> </TD><TD><b>Attack Objective Nodes:</b> Derived from CAPEC execution flow</TD></TR>'
-        legend_html += '<TR><TD bgcolor="yellow"> </TD><TD><b>Attack Method Nodes:</b> Derived from execution flow</TD></TR>'
-        legend_html += '<TR><TD bgcolor="orange"> </TD><TD><b>Generated Attack Method Nodes:</b> LLM-generated attack methods</TD></TR>'
-        legend_html += '<TR><TD bgcolor="lightgreen"> </TD><TD><b>Mitigation Nodes:</b> Derived from the CAPEC mitigations</TD></TR>'
-        legend_html += '<TR><TD bgcolor="forestgreen"> </TD><TD><b>Generated Countermeasure Nodes:</b> LLM-generated countermeasures</TD></TR>'
-        legend_html += '<TR><TD bgcolor="gray80"> </TD><TD><b>Other Children Nodes:</b> Nodes representing non-expanded children</TD></TR>'
-        legend_html += '</TABLE>>'
-        c.node('legend', legend_html, shape='none')
+    if verbose:
+        print("\nDuplicate Nodes Report:")
+        for cid, count in duplicates.items():
+            if count > 1:
+                print(f"- CAPEC-{cid} appears {count} times in the tree")
     
-    mapping_html = '<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4">'
-    mapping_html += '<TR><TD COLSPAN="2"><B>Node Mapping</B></TD></TR>'
-    for key in sorted(node_mapping.keys(), key=lambda x: int(x.replace("node", ""))):
-        mapping_text = html.escape(node_mapping[key])
-        mapping_html += f'<TR><TD>{key}</TD><TD>{mapping_text}</TD></TR>'
-    mapping_html += '</TABLE>>'
-    
-    with dot.subgraph(name='cluster_mapping') as c2:
-        c2.attr(rank='sink', label='Node Mappings', style='dashed')
-        c2.node('mapping', mapping_html, shape='none')
-    
-    with dot.subgraph(name='sink_cluster') as s:
-        s.attr(rank='sink')
-        s.node('dummy_sink', '', style='invis')
-        s.edge('dummy_sink', 'mapping', style='invis')
-    
-    output_filename = f'attack_defense_tree_{language_complexity}_{syntax_complexity}'
-    dot.render(output_filename, format='pdf', cleanup=True)
-    print(f"Graph rendered to {output_filename}.pdf")
-    
-    print("\nDuplicate Nodes Report:")
-    for cid, count in duplicates.items():
-        if count > 1:
-            print(f"- CAPEC-{cid} appears {count} times in the tree")
+    return {
+        'language_score': language_complexity_score,
+        'syntax_score': syntax_complexity_number,
+        'total_score': total_complexity,
+        'total_nodes': total_nodes,
+        'total_words': total_words,
+        'total_matches': total_matches
+    }
 
 if __name__ == "__main__":
-    # Options: language_complexity = [non-technical, developer, expert], syntax_complexity = [basic, countermeasures, full]
-    # generate_attack_tree_graph(capec_id=588, language_complexity='non-technical', syntax_complexity='basic')
-    # generate_attack_tree_graph(capec_id=588, language_complexity='developer', syntax_complexity='basic')
-    # generate_attack_tree_graph(capec_id=588, language_complexity='expert', syntax_complexity='basic')
-    # generate_attack_tree_graph(capec_id=588, language_complexity='non-technical', syntax_complexity='countermeasures')
-    # generate_attack_tree_graph(capec_id=588, language_complexity='developer', syntax_complexity='countermeasures')
-    # generate_attack_tree_graph(capec_id=588, language_complexity='expert', syntax_complexity='countermeasures')
-    # generate_attack_tree_graph(capec_id=588, language_complexity='non-technical', syntax_complexity='full')
-    generate_attack_tree_graph(capec_id=588, language_complexity='developer', syntax_complexity='full')
-    # generate_attack_tree_graph(capec_id=588, language_complexity='expert', syntax_complexity='full')
+    # Include one or many capec IDs in this array
+    capec_ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    # Options: ['non-technical', 'developer', 'expert']
+    language_complexities = ['non-technical', 'developer', 'expert']
+    # Options: ['basic', 'countermeasures', 'full']
+    syntax_complexities = ['basic', 'countermeasures', 'full']
+    
+    results = []
+    
+    for capec_id in capec_ids:
+        for lang in language_complexities:
+            for syn in syntax_complexities:
+                print(f"Processing CAPEC-{capec_id} with {lang} and {syn}")
+                complexities = generate_attack_tree_graph(
+                    capec_id=capec_id,
+                    language_complexity=lang,
+                    syntax_complexity=syn,
+                    render=False,  # True if you want the graph, False for batch processing/complexity analysis
+                    verbose=False  # True for detailed output, False for suppressing detailed output during batch processing
+                )
+                if complexities:
+                    results.append({
+                        'capec_id': capec_id,
+                        'language_complexity': lang,
+                        'syntax_complexity': syn,
+                        **complexities
+                    })
+                else:
+                    print(f"Failed to process CAPEC-{capec_id} with {lang} and {syn}")
+    
+    df = pd.DataFrame(results)
+    
+    averages = df.groupby(['language_complexity', 'syntax_complexity']).mean().reset_index()
+    
+    averages = averages[['language_complexity', 'syntax_complexity', 'language_score', 'syntax_score', 'total_score']]
+    averages[['language_score', 'syntax_score', 'total_score']] = averages[['language_score', 'syntax_score', 'total_score']].round(4)
+    
+    averages.to_csv('complexity_averages.csv', index=False)
+    print("Averages saved to 'complexity_averages.csv'")
