@@ -8,9 +8,9 @@ from collections import defaultdict
 from graphviz import Digraph
 import math
 import pandas as pd
-from openai import OpenAI
+from google import genai
 
-client = OpenAI(api_key="key")
+client = genai.Client(api_key="key")
 
 class Node:
     def __init__(self, originalBody="", actionableBody=""):
@@ -278,15 +278,15 @@ def generate_countermeasures_for_attack_method(attack_method_text, mitigation_co
     return steps
 
 def callGPT(instructions, originalText):
-    # Combine instructions and content for GPT-4o
     prompt = f"{instructions}\n\nHere is the context:\n\n{originalText}"
     try:
-        response = client.responses.create(model="gpt-4o",
-        input=prompt,
-        temperature=0)
-        return response.output_text
+        response = client.models.generate_content(
+            model="gemini-2.5-pro-preview-03-25",
+            contents=[prompt]
+        )
+        return response.text.strip()
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error: {str(e)}")
         return ""
 
 def process_capec_graph(capec_id, capec_dir, cwe_dir, current_path=None, duplicates=None, language_complexity='developer', syntax_complexity='full'):
