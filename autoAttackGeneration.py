@@ -627,7 +627,7 @@ if __name__ == "__main__":
     # Options: ['non-technical', 'developer', 'expert']
     language_complexities = ['non-technical', 'developer', 'expert']
     # Options: ['basic', 'countermeasures', 'full']
-    syntax_complexities = ['full']
+    syntax_complexities = ['basic', 'countermeasures', 'full']
     
     results = []
     
