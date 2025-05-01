@@ -8,6 +8,9 @@ from collections import defaultdict
 from graphviz import Digraph
 import math
 import pandas as pd
+from openai import OpenAI
+
+client = OpenAI(api_key="key", base_url="https://api.x.ai/v1")
 
 class Node:
     def __init__(self, originalBody="", actionableBody=""):
@@ -105,7 +108,7 @@ def adjust_language_complexity(text, complexity):
     else:
         return text
     
-    return callGPT(instructions, text, complexity)
+    return callGPT(instructions, text)
 
 def parse_execution_flow(execution_flow, language_complexity):
     steps = execution_flow.split('::STEP:')[1:]
@@ -215,7 +218,7 @@ def generate_cwe_attack_steps_for_all(cwe_ids, cwe_dir, language_complexity, num
     
     instructions_cwe = base_prompt + language_instruction + "\nNow generate plain text steps following these rules."
     
-    response = callGPT(instructions_cwe, all_cwe_info, language_complexity)
+    response = callGPT(instructions_cwe, all_cwe_info)
     steps = [step.strip() for step in response.split('\n') if step.strip()]
     return steps
 
@@ -270,33 +273,21 @@ def generate_countermeasures_for_attack_method(attack_method_text, mitigation_co
     instructions_countermeasure = base_prompt + language_instruction + "\nNow generate ONLY the plain text countermeasure as a single sentence. Do NOT generate multiple countermeasures or anything beyond that single sentence."
     
     combined_input = f"Attack Method: {attack_method_text}\nMitigation Context: {mitigation_context}"
-    response = callGPT(instructions_countermeasure, combined_input, language_complexity)
+    response = callGPT(instructions_countermeasure, combined_input)
     steps = [step.strip() for step in response.split('\n') if step.strip()]
     return steps
 
-def callGPT(instructions, originalText, complexity_level):
-    url = 'http://localhost:1234/v1/chat/completions'
-    headers = {"Content-Type": "application/json"}
-    data = {
-        "model": "deepseek-r1-distill-qwen-7b",
-        "messages": [
-            {"role": "system", "content": instructions},
-            {"role": "user", "content": originalText}
+def callGPT(instructions, originalText):
+    prompt = f"{instructions}\n\nHere is the context:\n\n{originalText}"
+    try:
+        response = client.chat.completions.create(model="grok-3-beta",
+        messages=[
+            {"role": "user", "content": prompt},
         ],
-        "temperature": 0.7,
-        "max_tokens": -1,
-        "stream": False
-    }
-
-    response = requests.post(url, headers=headers, data=json.dumps(data))
-
-    if response.status_code == 200:
-        response_json = response.json()
-        full_content = response_json["choices"][0]["message"]["content"]
-        extracted_content = re.sub(r".*</think>\s*", "", full_content, flags=re.DOTALL)
-        return extracted_content.strip()
-    else:
-        print(f"Error: {response.status_code}, {response.text}")
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Error: {e}")
         return ""
 
 def process_capec_graph(capec_id, capec_dir, cwe_dir, current_path=None, duplicates=None, language_complexity='developer', syntax_complexity='full'):
@@ -503,7 +494,7 @@ def get_node_attributes(graph_node):
     else:
          return {"style": "filled", "fillcolor": "lightblue"}
 
-def add_nodes_edges(dot, graph_node, node_mapping, parent_id=None, parent_label=None, mapping_counter=[1], and_counter=[1]):
+def add_nodes_edges(dot, graph_node, node_mapping, mapping_counter, and_counter, parent_id=None):
     if graph_node.is_and:
         current_id = "and" + str(and_counter[0])
         and_counter[0] += 1
@@ -522,7 +513,7 @@ def add_nodes_edges(dot, graph_node, node_mapping, parent_id=None, parent_label=
         dot.edge(parent_id, current_id, **edge_style)
     
     for child in graph_node.children:
-        add_nodes_edges(dot, child, node_mapping, parent_id=current_id, parent_label=graph_node.label, mapping_counter=mapping_counter, and_counter=and_counter)
+        add_nodes_edges(dot, child, node_mapping, parent_id=current_id, mapping_counter=mapping_counter, and_counter=and_counter)
 
 def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax_complexity='full', render=True, verbose=True):
     starting_capec_id = f"CAPEC-{capec_id}"
@@ -567,7 +558,9 @@ def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax
     if render:
         dot = Digraph(comment="CAPEC Attack-Defense Tree")
         node_mapping = {}
-        add_nodes_edges(dot, full_tree, node_mapping)
+        mapping_counter = [1]
+        and_counter = [1]
+        add_nodes_edges(dot, full_tree, node_mapping, mapping_counter, and_counter)
         
         with dot.subgraph(name='cluster_legend') as c:
             c.attr(label='Node Types', style='dashed')
@@ -621,11 +614,11 @@ def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax
 
 if __name__ == "__main__":
     # Include one or many capec IDs in this array
-    capec_ids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    capec_ids = [100, 66, 62, 126]
     # Options: ['non-technical', 'developer', 'expert']
-    language_complexities = ['non-technical', 'developer', 'expert']
+    language_complexities = ['developer']
     # Options: ['basic', 'countermeasures', 'full']
-    syntax_complexities = ['basic', 'countermeasures', 'full']
+    syntax_complexities = ['full']
     
     results = []
     
@@ -637,8 +630,8 @@ if __name__ == "__main__":
                     capec_id=capec_id,
                     language_complexity=lang,
                     syntax_complexity=syn,
-                    render=False,  # True if you want the graph, False for batch processing/complexity analysis
-                    verbose=False  # True for detailed output, False for suppressing detailed output during batch processing
+                    render=True,  # True if you want the graph, False for batch processing/complexity analysis
+                    verbose=True  # True for detailed output, False for suppressing detailed output during batch processing
                 )
                 if complexities:
                     results.append({
