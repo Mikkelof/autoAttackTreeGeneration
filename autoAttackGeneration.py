@@ -503,7 +503,7 @@ def get_node_attributes(graph_node):
     else:
          return {"style": "filled", "fillcolor": "lightblue"}
 
-def add_nodes_edges(dot, graph_node, node_mapping, parent_id=None, parent_label=None, mapping_counter=[1], and_counter=[1]):
+def add_nodes_edges(dot, graph_node, node_mapping, mapping_counter, and_counter, parent_id=None):
     if graph_node.is_and:
         current_id = "and" + str(and_counter[0])
         and_counter[0] += 1
@@ -522,7 +522,7 @@ def add_nodes_edges(dot, graph_node, node_mapping, parent_id=None, parent_label=
         dot.edge(parent_id, current_id, **edge_style)
     
     for child in graph_node.children:
-        add_nodes_edges(dot, child, node_mapping, parent_id=current_id, parent_label=graph_node.label, mapping_counter=mapping_counter, and_counter=and_counter)
+        add_nodes_edges(dot, child, node_mapping, parent_id=current_id, mapping_counter=mapping_counter, and_counter=and_counter)
 
 def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax_complexity='full', render=True, verbose=True):
     starting_capec_id = f"CAPEC-{capec_id}"
@@ -567,7 +567,9 @@ def generate_attack_tree_graph(capec_id, language_complexity='developer', syntax
     if render:
         dot = Digraph(comment="CAPEC Attack-Defense Tree")
         node_mapping = {}
-        add_nodes_edges(dot, full_tree, node_mapping)
+        mapping_counter = [1]
+        and_counter = [1]
+        add_nodes_edges(dot, full_tree, node_mapping, mapping_counter, and_counter)
         
         with dot.subgraph(name='cluster_legend') as c:
             c.attr(label='Node Types', style='dashed')
@@ -625,7 +627,7 @@ if __name__ == "__main__":
     # Options: ['non-technical', 'developer', 'expert']
     language_complexities = ['non-technical', 'developer', 'expert']
     # Options: ['basic', 'countermeasures', 'full']
-    syntax_complexities = ['basic', 'countermeasures', 'full']
+    syntax_complexities = ['full']
     
     results = []
     
