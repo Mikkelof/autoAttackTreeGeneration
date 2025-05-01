@@ -10,7 +10,7 @@ import math
 import pandas as pd
 from openai import OpenAI
 
-client = OpenAI(api_key="key", base_url="https://api.x.ai/v1")
+client = OpenAI(api_key="key")
 
 class Node:
     def __init__(self, originalBody="", actionableBody=""):
@@ -278,14 +278,13 @@ def generate_countermeasures_for_attack_method(attack_method_text, mitigation_co
     return steps
 
 def callGPT(instructions, originalText):
+    # Combine instructions and content for GPT-4o
     prompt = f"{instructions}\n\nHere is the context:\n\n{originalText}"
     try:
-        response = client.chat.completions.create(model="grok-3-beta",
-        messages=[
-            {"role": "user", "content": prompt},
-        ],
-        )
-        return response.choices[0].message.content
+        response = client.responses.create(model="gpt-4o",
+        input=prompt,
+        temperature=0)
+        return response.output_text
     except Exception as e:
         print(f"Error: {e}")
         return ""
